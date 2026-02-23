@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "nightbot"
+version = "0.1.0"
+description = "24/7 AI development crew powered by local LLMs"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+voice = [
+    "chatterbox-tts",
+    "faster-whisper",
+]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1",
+]
+
+[project.scripts]
+nightbot = "nightbot.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

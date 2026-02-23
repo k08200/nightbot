@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Runtime data (don't commit these)
+plans/current.json
+plans/history/
+reports/
+decisions/
+queue/running/
+queue/done/
+sandbox/
+
+# Config with secrets
+config/nightbot.yaml
+
+# Keep queue/pending for committed tasks
+!queue/pending/.gitkeep
