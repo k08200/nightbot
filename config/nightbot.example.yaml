@@ -1,46 +1,28 @@
-# Night Bot Configuration
-# Copy to nightbot.yaml and edit
-
 ollama:
   host: "http://localhost:11434"
-  
 models:
   planner: "qwen2.5:32b"
-  scout: "deepseek-coder-v2:33b"
+  scout: "qwen2.5-coder:14b"
   secretary: "qwen2.5:32b"
   lightweight: "llama3.1:8b"
-
 sandbox:
   image: "nightbot-sandbox:latest"
   memory: "8g"
   cpus: 4
-  network: "host"  # for npm install etc, restrict in prod
+  network: "host"
   auto_destroy: true
-
 escalation:
-  slack_webhook: ""  # https://hooks.slack.com/services/...
+  slack_webhook: ""
   slack_channel: ""
-  twilio:
-    enabled: false
-    account_sid: ""
-    auth_token: ""
-    from_number: ""
-    to_number: ""
   cooldown_minutes: 30
-
 circuit_breakers:
   same_error_limit: 3
   iteration_limit: 20
   timeout_per_task_hours: 6
   total_timeout_hours: 10
   replan_limit: 5
-
 scheduler:
-  check_interval_seconds: 300  # 5 min
-  active_hours:               # when to run (empty = always)
-    start: "22:00"
-    end: "08:00"
-
+  check_interval_seconds: 300
 paths:
   plans: "./plans"
   reports: "./reports"

@@ -1,55 +1,40 @@
 # Night Bot 🌙
 
-**자는 동안 local LLM이 코드를 짜고, 돌려보고, 인사이트만 남기고, 코드는 버린다.**
+**While you sleep, a local LLM writes code, runs it, discovers what works and what doesn't, then throws the code away and keeps only the insights.**
 
-Night Bot is a 24/7 AI development crew that runs on local LLMs. It explores, validates, and scouts — then throws away the code and keeps only the insights.
+Night Bot is a 24/7 AI development crew running entirely on local LLMs. Zero cloud cost.
 
-## Core Idea
+## Core Loop
+```
+You (before bed):     "Can vitest resolve tsconfig path aliases in a monorepo?"
+Night Bot (overnight): writes code → runs in sandbox → error → fix → retry → success
+You (morning):         reads report.md with findings, gotchas, and next steps
+```
 
-- **Scout** — writes code, runs it in a sandbox, generates a report, deletes the code
-- **Planner** — maintains a 24h task graph with dependencies, assigns work to Scout, replans on results
+## Components
+
+- **Scout** — writes code, runs it in Docker sandbox, generates report, destroys code
+- **Planner** — 24h task graph with dependencies, assigns work, replans on results
 - **Secretary** — orchestrates everything, escalates to human only when needed
 
 ## Quick Start
-
 ```bash
-# Install
 pip install -e .
-
-# Configure
-cp config/nightbot.example.yaml config/nightbot.yaml
-# Edit with your ollama model preferences
-
-# Add a task
+nightbot setup
 nightbot add "Can we migrate from Jest to Vitest without breaking our test suite?"
-
-# Start the daemon
 nightbot start
-
-# Check in the morning
 nightbot briefing
 ```
 
 ## Requirements
 
 - Python 3.11+
-- [ollama](https://ollama.ai) running locally
-- Docker (for sandbox isolation)
+- [ollama](https://ollama.ai) with a coding model (e.g. `qwen2.5-coder:14b`)
+- Docker
 
-## Architecture
+## Status
 
-```
-주인장 (사람)
-    │
-    ▼
-메인 비서 (Orchestrator) ── 항상 ON, 메인 루프
-    │
-    ├── Planner ── 24h 계획, 의존성, 재계획
-    │
-    └── Scout ── Docker sandbox, 코드 실행, report 생성, 코드 폐기
-```
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details.
+See [ROADMAP.md](ROADMAP.md) for the phase-by-phase plan.
 
 ## License
 
