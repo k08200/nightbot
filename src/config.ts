@@ -28,6 +28,16 @@ export interface Config {
     timeoutPerTaskHours: number;
     totalTimeoutHours: number;
   };
+  contextCompression: {
+    enabled: boolean;
+    maxTokenEstimate: number;
+    keepRecentMessages: number;
+    compressAfterIteration: number;
+  };
+  gateRetry: {
+    enabled: boolean;
+    maxAttempts: number;
+  };
   scheduler: {
     checkIntervalSeconds: number;
   };
@@ -66,6 +76,16 @@ const defaults: Config = {
     timeoutPerTaskHours: 6,
     totalTimeoutHours: 10,
   },
+  contextCompression: {
+    enabled: true,
+    maxTokenEstimate: 4000,
+    keepRecentMessages: 4,
+    compressAfterIteration: 3,
+  },
+  gateRetry: {
+    enabled: true,
+    maxAttempts: 2,
+  },
   scheduler: {
     checkIntervalSeconds: 300,
   },
@@ -89,6 +109,8 @@ export function loadConfig(path?: string): Config {
     sandbox: { ...defaults.sandbox, ...raw.sandbox },
     escalation: { ...defaults.escalation, ...raw.escalation },
     circuitBreakers: { ...defaults.circuitBreakers, ...raw.circuit_breakers },
+    contextCompression: { ...defaults.contextCompression, ...raw.context_compression },
+    gateRetry: { ...defaults.gateRetry, ...raw.gate_retry },
     scheduler: { ...defaults.scheduler, ...raw.scheduler },
     paths: { ...defaults.paths, ...raw.paths },
   };

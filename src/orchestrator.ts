@@ -13,10 +13,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
 
+const MAX_CONSECUTIVE_FAILURES = 3;
+
 export async function startOrchestrator(config?: Config): Promise<void> {
   config = config ?? loadConfig();
   const llm = new LLM(config.ollama.host);
   const completedIds = new Set<string>();
+  const failureCount = new Map<string, number>();
+  let consecutiveErrors = 0;
   let running = true;
 
   process.on("SIGINT", () => { running = false; });
@@ -30,6 +34,10 @@ export async function startOrchestrator(config?: Config): Promise<void> {
   }
 
   startEscalationTimer();
+
+  // Crash recovery: move any stuck "running" tasks back to "pending"
+  recoverRunningTasks(config);
+
   console.log(`[nightbot] ollama connected`);
   console.log(`[nightbot] scout model: ${config.models.scout}`);
 
@@ -58,6 +66,14 @@ export async function startOrchestrator(config?: Config): Promise<void> {
         continue;
       }
 
+      // Skip tasks that have failed too many times
+      const failures = failureCount.get(nextId) ?? 0;
+      if (failures >= MAX_CONSECUTIVE_FAILURES) {
+        console.log(`[nightbot] Skipping ${nextId}: failed ${failures} times consecutively`);
+        completedIds.add(nextId);
+        continue;
+      }
+
       const task = findTask(nextId, plan, config);
       if (!task) {
         completedIds.add(nextId);
@@ -79,23 +95,51 @@ export async function startOrchestrator(config?: Config): Promise<void> {
           result.report.slice(0, 1000),
         );
         moveTask(task, config.paths.queue, "escalated");
+        failureCount.set(nextId, failures + 1);
       } else if (task.mode === "implement" && result.diff?.trim()) {
-        const handled = await handleImplementResult(task, result, config);
+        const handled = await handleImplementResult(task, result, config, llm);
         if (handled) {
           completedIds.add(nextId);
+          failureCount.delete(nextId);
+        } else {
+          failureCount.set(nextId, failures + 1);
+          const newCount = failures + 1;
+          if (newCount >= MAX_CONSECUTIVE_FAILURES) {
+            console.log(`[nightbot] Task ${task.id} failed ${newCount} times, giving up`);
+            await escalate(
+              `Task "${task.question}" failed ${newCount} consecutive times and has been abandoned`,
+              Level.NOTIFY,
+              config,
+              result.report.slice(0, 1000),
+            );
+          }
         }
       } else {
         moveTask(task, config.paths.queue, "done");
         completedIds.add(nextId);
+        failureCount.delete(nextId);
       }
 
+      consecutiveErrors = 0;
       console.log(`[nightbot] Done: ${task.id} (${result.iterations} iters, ${(result.durationMs / 1000).toFixed(0)}s)`);
 
       plan = await replan(plan, result.report, config, llm);
       savePlan(plan, config.paths.plans);
 
     } catch (err) {
-      console.error("[nightbot] Error:", err);
+      consecutiveErrors++;
+      console.error(`[nightbot] Error (${consecutiveErrors}/${MAX_CONSECUTIVE_FAILURES}):`, err);
+
+      if (consecutiveErrors >= MAX_CONSECUTIVE_FAILURES) {
+        console.error(`[nightbot] ${MAX_CONSECUTIVE_FAILURES} consecutive loop errors, shutting down`);
+        await escalate(
+          `Orchestrator hit ${MAX_CONSECUTIVE_FAILURES} consecutive errors and is shutting down`,
+          Level.URGENT,
+          config,
+          String(err).slice(0, 1000),
+        );
+        break;
+      }
     }
 
     await sleep(config.scheduler.checkIntervalSeconds * 1000);
@@ -139,12 +183,26 @@ function findTask(taskId: string, plan: Plan, config: Config): Task | null {
   return null;
 }
 
+// ─── Crash recovery ─────────────────────────────────────────
+
+function recoverRunningTasks(config: Config): void {
+  const running = loadTasks(config.paths.queue, "running");
+  if (running.length === 0) return;
+
+  console.log(`[nightbot] Recovering ${running.length} stuck task(s) from previous run`);
+  for (const task of running) {
+    console.log(`[nightbot]   ${task.id} (running → pending)`);
+    moveTask(task, config.paths.queue, "pending");
+  }
+}
+
 // ─── Implement mode: gate check → branch → PR ───────────────
 
 async function handleImplementResult(
   task: Task,
   result: ScoutResult,
   config: Config,
+  llm?: LLM,
 ): Promise<boolean> {
   if (!result.diff?.trim() || !result.changedFiles?.length) {
     console.log("[gate] No changes to apply");
@@ -159,32 +217,67 @@ async function handleImplementResult(
     return true;
   }
 
-  // Run gates against the diff
-  console.log("[gate] Running code gates...");
-  const gateReport = runGates(repoPath, result.diff);
-  const reportText = formatGateReport(gateReport);
+  let currentResult = result;
+  const maxAttempts = config.gateRetry.enabled ? config.gateRetry.maxAttempts : 0;
 
-  // Save gate report
-  mkdirSync(config.paths.reports, { recursive: true });
-  const gatePath = resolve(config.paths.reports, `${new Date().toISOString().slice(0, 10)}-${task.id}-gate.md`);
-  writeFileSync(gatePath, reportText);
-  console.log(`[gate] Report: ${gatePath}`);
+  for (let attempt = 0; attempt <= maxAttempts; attempt++) {
+    const isRetry = attempt > 0;
+    const label = isRetry ? `[gate:retry ${attempt}/${maxAttempts}]` : "[gate]";
 
-  if (gateReport.passed) {
-    console.log(`[gate] PASSED (${gateReport.warnCount} warnings)`);
-    applyChanges(repoPath, task, result);
-    moveTask(task, config.paths.queue, "done");
-    return true;
+    // Run gates against the diff
+    console.log(`${label} Running code gates...`);
+    const gateReport = runGates(repoPath, currentResult.diff ?? "");
+    const reportText = formatGateReport(gateReport);
+
+    // Save gate report
+    mkdirSync(config.paths.reports, { recursive: true });
+    const suffix = isRetry ? `-gate-retry${attempt}` : "-gate";
+    const gatePath = resolve(config.paths.reports, `${new Date().toISOString().slice(0, 10)}-${task.id}${suffix}.md`);
+    writeFileSync(gatePath, reportText);
+    console.log(`${label} Report: ${gatePath}`);
+
+    if (gateReport.passed) {
+      console.log(`${label} PASSED (${gateReport.warnCount} warnings)`);
+      applyChanges(repoPath, task, currentResult);
+      moveTask(task, config.paths.queue, "done");
+      return true;
+    }
+
+    console.log(`${label} FAILED (${gateReport.failCount} failures)`);
+
+    // If retries are available and LLM is provided, re-run scout with gate feedback
+    if (attempt < maxAttempts && llm && config.gateRetry.enabled) {
+      const summary = gateFailureSummary(gateReport);
+      console.log(`${label} Re-running scout with gate feedback...`);
+
+      const fixTask: Task = {
+        ...task,
+        question: `Fix gate failures for: ${task.question}\n\nGate failures:\n${summary}\n\nFix these issues in the existing code. Do NOT introduce new features.`,
+      };
+
+      const fixResult = await runScout(fixTask, config, llm);
+      saveReport(fixResult, config.paths.reports);
+
+      if (fixResult.diff?.trim() && fixResult.changedFiles?.length) {
+        currentResult = fixResult;
+        continue;
+      }
+
+      console.log(`${label} Scout produced no changes on retry`);
+    }
+
+    // Final failure: escalate
+    const summary = gateFailureSummary(gateReport);
+    await escalate(
+      `Task "${task.question}" failed code gate (after ${attempt + 1} attempt(s)):\n${summary}`,
+      Level.NOTIFY,
+      config,
+      reportText.slice(0, 1000),
+    );
+    moveTask(task, config.paths.queue, "failed");
+    return false;
   }
 
-  console.log(`[gate] FAILED (${gateReport.failCount} failures)`);
-  const summary = gateFailureSummary(gateReport);
-  await escalate(
-    `Task "${task.question}" failed code gate:\n${summary}`,
-    Level.NOTIFY,
-    config,
-    reportText.slice(0, 1000),
-  );
   moveTask(task, config.paths.queue, "failed");
   return false;
 }
