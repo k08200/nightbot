@@ -130,7 +130,7 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
           result = sandbox.exec(`cd ${workdir} && ${code}`);
         } else if (["typescript", "ts"].includes(lang)) {
           sandbox.writeFile("test.ts", code);
-          result = sandbox.exec(`cd ${workdir} && npx ts-node ${workdir}/test.ts`);
+          result = sandbox.exec(`cd ${workdir} && npx tsx ${workdir}/test.ts`);
         } else if (["javascript", "js"].includes(lang)) {
           sandbox.writeFile("test.js", code);
           result = sandbox.exec(`cd ${workdir} && node ${workdir}/test.js`);

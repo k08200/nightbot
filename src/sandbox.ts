@@ -104,7 +104,7 @@ export class Sandbox {
 export function buildSandboxImage(): void {
   const dockerfile = `FROM node:20-slim
 RUN apt-get update && apt-get install -y git curl python3 build-essential && rm -rf /var/lib/apt/lists/*
-RUN npm install -g typescript ts-node pnpm
+RUN npm install -g typescript tsx pnpm
 WORKDIR /sandbox`;
 
   execSync(`echo '${dockerfile}' | docker build -t nightbot-sandbox:latest -`, {
