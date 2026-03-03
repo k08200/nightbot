@@ -69,6 +69,21 @@ export class Sandbox {
     return this.exec(`mkdir -p $(dirname /sandbox/${path}) && echo ${b64} | base64 -d > /sandbox/${path}`);
   }
 
+  writeFileAt(absolutePath: string, content: string): ExecResult {
+    const b64 = Buffer.from(content).toString("base64");
+    return this.exec(`mkdir -p $(dirname ${absolutePath}) && echo ${b64} | base64 -d > ${absolutePath}`);
+  }
+
+  readFile(absolutePath: string): string {
+    const result = this.exec(`cat ${absolutePath} 2>/dev/null`);
+    return result.stdout;
+  }
+
+  listFiles(dir: string, pattern = "*"): string[] {
+    const result = this.exec(`find ${dir} -name "${pattern}" -type f 2>/dev/null | head -50`);
+    return result.stdout.trim().split("\n").filter(Boolean);
+  }
+
   createWithRepo(repoPath: string): string {
     const id = this.create(repoPath);
     this.exec("cp -r /workspace /project");

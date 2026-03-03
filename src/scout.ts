@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
 import type { Config } from "./config.js";
+import { compressContext } from "./context.js";
+import { analyzeResult, formatFeedbackMessage, type StructuredFeedback } from "./feedback.js";
 import type { LLM, Message } from "./llm.js";
 import { Sandbox } from "./sandbox.js";
 import type { Task } from "./task.js";
@@ -17,11 +19,21 @@ export interface ScoutResult {
   changedFiles?: Array<{ path: string; content: string }>;
 }
 
-function extractCodeBlocks(text: string): Array<{ lang: string; code: string }> {
-  const blocks: Array<{ lang: string; code: string }> = [];
-  const regex = /```(\w*)\n([\s\S]*?)```/g;
+interface CodeBlock {
+  lang: string;
+  code: string;
+  targetFile?: string;
+}
+
+function extractCodeBlocks(text: string): CodeBlock[] {
+  const blocks: CodeBlock[] = [];
+  const regex = /(?:<!--\s*FILE:\s*(\S+)\s*-->\s*\n)?```(\w*)\n([\s\S]*?)```/g;
   for (let match = regex.exec(text); match !== null; match = regex.exec(text)) {
-    blocks.push({ lang: match[1] || "bash", code: match[2].trim() });
+    blocks.push({
+      targetFile: match[1] || undefined,
+      lang: match[2] || "bash",
+      code: match[3].trim(),
+    });
   }
   return blocks;
 }
@@ -46,7 +58,24 @@ Rules:
 - Run the project's existing tests after your changes to verify nothing breaks.
 - Work ONLY inside /project. All file edits must be there.
 - When finished, say DONE. If you need human input, say ESCALATE.
-- Your changes will be reviewed by automated gates before merging.`;
+- Your changes will be reviewed by automated gates before merging.
+
+Testing:
+- After making changes, ALWAYS write tests for the code you changed.
+- Check existing test patterns first: look for *.test.ts, *.spec.ts, or __tests__/ directories.
+- Match the existing test framework (jest, vitest, mocha, etc). If none exists, use the built-in node:test module.
+- Test files must be placed alongside the source or in the project's test directory.
+- Run the tests to verify they pass before saying DONE.
+
+Multi-file editing:
+To write to a specific file, put a FILE comment before your code block:
+<!-- FILE: src/utils/helper.ts -->
+\`\`\`typescript
+export function helper() { return 42; }
+\`\`\`
+
+You can write multiple files in one response. Code blocks without FILE comments are executed as scripts.
+Use \`\`\`bash blocks to run commands (tests, builds, file reads).`;
 
 export async function runScout(task: Task, config: Config, llm: LLM): Promise<ScoutResult> {
   const isImplement = task.mode === "implement";
@@ -65,10 +94,12 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
     ? `Task: ${task.question}\nType: ${task.type}\n\nThe project is at /project. Read the code, make changes, run tests. Work inside /project only.`
     : `Task: ${task.question}\nType: ${task.type}\n\nValidate this by writing and running code.`;
 
-  const messages: Message[] = [
+  let messages: Message[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt },
   ];
+
+  const compression = config.contextCompression;
 
   const sandbox = new Sandbox(
     config.sandbox.image,
@@ -102,6 +133,12 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
       }
 
       console.log(`[scout:${modeLabel}] Iteration ${iterations}/${cb.iterationLimit}`);
+
+      // Compress context if history is getting too long
+      if (iterations > compression.compressAfterIteration) {
+        messages = await compressContext(messages, llm, config.models.lightweight, compression);
+      }
+
       const response = await llm.chat(model, messages);
       messages.push({ role: "assistant", content: response });
 
@@ -123,9 +160,21 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
         continue;
       }
 
-      const results: string[] = [];
-      for (const { lang, code } of blocks) {
+      const feedbacks: StructuredFeedback[] = [];
+      for (const block of blocks) {
+        const { lang, code, targetFile } = block;
         let result: import("./sandbox.js").ExecResult;
+
+        // If a target file is specified, write to that path instead of a temp file
+        if (targetFile && !["bash", "sh", "shell"].includes(lang)) {
+          const filePath = targetFile.startsWith("/")
+            ? targetFile
+            : `${workdir}/${targetFile}`;
+          sandbox.writeFileAt(filePath, code);
+          feedbacks.push(analyzeResult(lang, { exitCode: 0, stdout: `Wrote ${filePath}`, stderr: "" }));
+          continue;
+        }
+
         if (["bash", "sh", "shell", ""].includes(lang)) {
           result = sandbox.exec(`cd ${workdir} && ${code}`);
         } else if (["typescript", "ts"].includes(lang)) {
@@ -140,19 +189,16 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
         } else {
           result = sandbox.exec(`cd ${workdir} && ${code}`);
         }
-        results.push(`[${lang}] exit=${result.exitCode}\n${result.stdout}\n${result.stderr}`);
+        feedbacks.push(analyzeResult(lang, result));
       }
 
-      const output = results.join("\n---\n");
-      messages.push({
-        role: "user",
-        content: `Execution results:\n\n${output}\n\nAnalyze and continue. Say DONE when finished. Say ESCALATE if you need human input.`,
-      });
+      const feedbackMessage = formatFeedbackMessage(feedbacks);
+      messages.push({ role: "user", content: feedbackMessage });
 
       // Circuit breaker: same error repeated
-      const hasError = results.some(r => r.includes("exit=1") || r.includes("STDERR"));
+      const hasError = feedbacks.some(f => !f.success);
       if (hasError) {
-        recentErrors.push(output.slice(0, 200));
+        recentErrors.push(feedbackMessage.slice(0, 200));
         if (recentErrors.length >= cb.sameErrorLimit) {
           const recent = recentErrors.slice(-cb.sameErrorLimit);
           if (new Set(recent).size === 1) {
@@ -163,6 +209,59 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
             break;
           }
         }
+      }
+    }
+
+    // Auto-generate tests if implement mode and no tests were written
+    if (isImplement && !escalated) {
+      const testCheck = sandbox.exec(
+        "cd /project && git diff --name-only HEAD | grep -E '\\.(test|spec)\\.(ts|js|tsx|jsx)$' | head -5",
+      );
+      const hasTests = testCheck.stdout.trim().length > 0;
+
+      if (!hasTests) {
+        const changedSrc = sandbox.exec(
+          "cd /project && git diff --name-only HEAD | grep -E '\\.(ts|js|tsx|jsx)$' | head -10",
+        );
+        if (changedSrc.stdout.trim()) {
+          console.log("[scout:implement] No tests found in changes, requesting test generation");
+          messages.push({
+            role: "user",
+            content: `You changed these files but wrote no tests:\n${changedSrc.stdout}\n\nWrite tests for your changes now. Match the project's existing test patterns. Use <!-- FILE: path --> syntax to create test files. Then run them.`,
+          });
+
+          // Give the scout 2 more iterations to write tests
+          for (let t = 0; t < 2; t++) {
+            const testResp = await llm.chat(model, messages);
+            messages.push({ role: "assistant", content: testResp });
+
+            const testBlocks = extractCodeBlocks(testResp);
+            if (testBlocks.length === 0) break;
+
+            const testFeedbacks: StructuredFeedback[] = [];
+            for (const block of testBlocks) {
+              const { lang, code, targetFile } = block;
+              if (targetFile && !["bash", "sh", "shell"].includes(lang)) {
+                const filePath = targetFile.startsWith("/") ? targetFile : `${workdir}/${targetFile}`;
+                sandbox.writeFileAt(filePath, code);
+                testFeedbacks.push(analyzeResult(lang, { exitCode: 0, stdout: `Wrote ${filePath}`, stderr: "" }));
+              } else {
+                const result = sandbox.exec(`cd ${workdir} && ${code}`);
+                testFeedbacks.push(analyzeResult(lang, result));
+              }
+            }
+
+            const fbMsg = formatFeedbackMessage(testFeedbacks);
+            messages.push({ role: "user", content: fbMsg });
+
+            if (testFeedbacks.every(f => f.success)) {
+              console.log("[scout:implement] Tests generated and passing");
+              break;
+            }
+          }
+        }
+      } else {
+        console.log("[scout:implement] Tests found in changes");
       }
     }
 

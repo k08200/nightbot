@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "
 import { resolve } from "node:path";
 import { Command } from "commander";
 import { loadConfig } from "./config.js";
+import { startDashboard } from "./dashboard.js";
 import { LLM } from "./llm.js";
 import { startOrchestrator } from "./orchestrator.js";
 import { generateBriefing } from "./planner.js";
@@ -228,6 +229,16 @@ program
 
     console.log('');
     console.log(result.report);
+  });
+
+program
+  .command("dashboard")
+  .description("Open the EVE monitoring dashboard in your browser")
+  .option("-p, --port <port>", "Port number", "3847")
+  .action((opts) => {
+    const config = loadConfig();
+    const port = Number.parseInt(opts.port, 10);
+    startDashboard(config, port);
   });
 
 program.parse();

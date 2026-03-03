@@ -97,7 +97,7 @@ export async function startOrchestrator(config?: Config): Promise<void> {
         moveTask(task, config.paths.queue, "escalated");
         failureCount.set(nextId, failures + 1);
       } else if (task.mode === "implement" && result.diff?.trim()) {
-        const handled = await handleImplementResult(task, result, config);
+        const handled = await handleImplementResult(task, result, config, llm);
         if (handled) {
           completedIds.add(nextId);
           failureCount.delete(nextId);
@@ -202,6 +202,7 @@ async function handleImplementResult(
   task: Task,
   result: ScoutResult,
   config: Config,
+  llm?: LLM,
 ): Promise<boolean> {
   if (!result.diff?.trim() || !result.changedFiles?.length) {
     console.log("[gate] No changes to apply");
@@ -216,32 +217,67 @@ async function handleImplementResult(
     return true;
   }
 
-  // Run gates against the diff
-  console.log("[gate] Running code gates...");
-  const gateReport = runGates(repoPath, result.diff);
-  const reportText = formatGateReport(gateReport);
+  let currentResult = result;
+  const maxAttempts = config.gateRetry.enabled ? config.gateRetry.maxAttempts : 0;
 
-  // Save gate report
-  mkdirSync(config.paths.reports, { recursive: true });
-  const gatePath = resolve(config.paths.reports, `${new Date().toISOString().slice(0, 10)}-${task.id}-gate.md`);
-  writeFileSync(gatePath, reportText);
-  console.log(`[gate] Report: ${gatePath}`);
+  for (let attempt = 0; attempt <= maxAttempts; attempt++) {
+    const isRetry = attempt > 0;
+    const label = isRetry ? `[gate:retry ${attempt}/${maxAttempts}]` : "[gate]";
 
-  if (gateReport.passed) {
-    console.log(`[gate] PASSED (${gateReport.warnCount} warnings)`);
-    applyChanges(repoPath, task, result);
-    moveTask(task, config.paths.queue, "done");
-    return true;
+    // Run gates against the diff
+    console.log(`${label} Running code gates...`);
+    const gateReport = runGates(repoPath, currentResult.diff ?? "");
+    const reportText = formatGateReport(gateReport);
+
+    // Save gate report
+    mkdirSync(config.paths.reports, { recursive: true });
+    const suffix = isRetry ? `-gate-retry${attempt}` : "-gate";
+    const gatePath = resolve(config.paths.reports, `${new Date().toISOString().slice(0, 10)}-${task.id}${suffix}.md`);
+    writeFileSync(gatePath, reportText);
+    console.log(`${label} Report: ${gatePath}`);
+
+    if (gateReport.passed) {
+      console.log(`${label} PASSED (${gateReport.warnCount} warnings)`);
+      applyChanges(repoPath, task, currentResult);
+      moveTask(task, config.paths.queue, "done");
+      return true;
+    }
+
+    console.log(`${label} FAILED (${gateReport.failCount} failures)`);
+
+    // If retries are available and LLM is provided, re-run scout with gate feedback
+    if (attempt < maxAttempts && llm && config.gateRetry.enabled) {
+      const summary = gateFailureSummary(gateReport);
+      console.log(`${label} Re-running scout with gate feedback...`);
+
+      const fixTask: Task = {
+        ...task,
+        question: `Fix gate failures for: ${task.question}\n\nGate failures:\n${summary}\n\nFix these issues in the existing code. Do NOT introduce new features.`,
+      };
+
+      const fixResult = await runScout(fixTask, config, llm);
+      saveReport(fixResult, config.paths.reports);
+
+      if (fixResult.diff?.trim() && fixResult.changedFiles?.length) {
+        currentResult = fixResult;
+        continue;
+      }
+
+      console.log(`${label} Scout produced no changes on retry`);
+    }
+
+    // Final failure: escalate
+    const summary = gateFailureSummary(gateReport);
+    await escalate(
+      `Task "${task.question}" failed code gate (after ${attempt + 1} attempt(s)):\n${summary}`,
+      Level.NOTIFY,
+      config,
+      reportText.slice(0, 1000),
+    );
+    moveTask(task, config.paths.queue, "failed");
+    return false;
   }
 
-  console.log(`[gate] FAILED (${gateReport.failCount} failures)`);
-  const summary = gateFailureSummary(gateReport);
-  await escalate(
-    `Task "${task.question}" failed code gate:\n${summary}`,
-    Level.NOTIFY,
-    config,
-    reportText.slice(0, 1000),
-  );
   moveTask(task, config.paths.queue, "failed");
   return false;
 }
