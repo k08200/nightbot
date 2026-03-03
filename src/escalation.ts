@@ -1,6 +1,6 @@
-import { writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from "fs";
-import { resolve } from "path";
-import { Config } from "./config.js";
+import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { Config } from "./config.js";
 
 export enum Level {
   SILENT = 0,

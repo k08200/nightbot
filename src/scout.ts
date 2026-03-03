@@ -1,10 +1,10 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import yaml from "js-yaml";
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
-import { resolve } from "path";
-import { Config } from "./config.js";
-import { LLM, Message } from "./llm.js";
+import type { Config } from "./config.js";
+import type { LLM, Message } from "./llm.js";
 import { Sandbox } from "./sandbox.js";
-import { Task } from "./task.js";
+import type { Task } from "./task.js";
 
 export interface ScoutResult {
   task: Task;
@@ -20,8 +20,7 @@ export interface ScoutResult {
 function extractCodeBlocks(text: string): Array<{ lang: string; code: string }> {
   const blocks: Array<{ lang: string; code: string }> = [];
   const regex = /```(\w*)\n([\s\S]*?)```/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
+  for (let match = regex.exec(text); match !== null; match = regex.exec(text)) {
     blocks.push({ lang: match[1] || "bash", code: match[2].trim() });
   }
   return blocks;
@@ -126,7 +125,7 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
 
       const results: string[] = [];
       for (const { lang, code } of blocks) {
-        let result;
+        let result: import("./sandbox.js").ExecResult;
         if (["bash", "sh", "shell", ""].includes(lang)) {
           result = sandbox.exec(`cd ${workdir} && ${code}`);
         } else if (["typescript", "ts"].includes(lang)) {

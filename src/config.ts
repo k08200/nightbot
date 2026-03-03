@@ -1,6 +1,6 @@
-import { readFileSync, existsSync } from "fs";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import yaml from "js-yaml";
-import { resolve } from "path";
 
 export interface Config {
   ollama: { host: string };
@@ -82,7 +82,7 @@ export function loadConfig(path?: string): Config {
   const configPath = path ?? resolve("config/nightbot.yaml");
   if (!existsSync(configPath)) return defaults;
 
-  const raw = yaml.load(readFileSync(configPath, "utf-8")) as Record<string, any> ?? {};
+  const raw = yaml.load(readFileSync(configPath, "utf-8")) as Record<string, Record<string, unknown>> | null ?? {};
   return {
     ollama: { ...defaults.ollama, ...raw.ollama },
     models: { ...defaults.models, ...raw.models },
@@ -94,8 +94,8 @@ export function loadConfig(path?: string): Config {
   };
 }
 
-export function loadAgent(name: string, config: Config): Record<string, any> {
+export function loadAgent(name: string, config: Config): Record<string, unknown> {
   const agentPath = resolve(config.paths.agents, `${name}.yaml`);
   if (!existsSync(agentPath)) throw new Error(`Agent not found: ${agentPath}`);
-  return yaml.load(readFileSync(agentPath, "utf-8")) as Record<string, any>;
+  return yaml.load(readFileSync(agentPath, "utf-8")) as Record<string, unknown>;
 }

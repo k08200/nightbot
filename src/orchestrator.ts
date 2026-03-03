@@ -1,13 +1,13 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { execSync } from "child_process";
-import { resolve } from "path";
-import { Config, loadConfig } from "./config.js";
+import { execSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { type Config, loadConfig } from "./config.js";
+import { checkDecisionResponses, classifyEscalation, escalate, Level, startEscalationTimer, stopEscalationTimer } from "./escalation.js";
+import { formatGateReport, gateFailureSummary, runGates } from "./gate.js";
 import { LLM } from "./llm.js";
-import { createPlan, getNextTask, replan, savePlan, Plan } from "./planner.js";
-import { runScout, saveReport, ScoutResult } from "./scout.js";
-import { Task, createTask, loadTasks, moveTask } from "./task.js";
-import { escalate, classifyEscalation, Level, startEscalationTimer, stopEscalationTimer, checkDecisionResponses } from "./escalation.js";
-import { runGates, formatGateReport, gateFailureSummary } from "./gate.js";
+import { createPlan, getNextTask, type Plan, replan, savePlan } from "./planner.js";
+import { runScout, type ScoutResult, saveReport } from "./scout.js";
+import { createTask, loadTasks, moveTask, type Task } from "./task.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
@@ -108,7 +108,7 @@ export async function startOrchestrator(config?: Config): Promise<void> {
 async function loadOrCreatePlan(config: Config, llm: LLM): Promise<Plan> {
   const planPath = resolve(config.paths.plans, "current.json");
   if (existsSync(planPath)) {
-    const plan = JSON.parse(readFileSync(planPath, "utf-8"));
+    const plan = JSON.parse(readFileSync(planPath, "utf-8")) as Plan;
     console.log(`[nightbot] Loaded plan: ${plan.tasks?.length ?? 0} tasks`);
     return plan;
   }

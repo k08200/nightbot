@@ -1,5 +1,5 @@
-import { execSync } from "child_process";
-import { randomUUID } from "crypto";
+import { execSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 
 export interface ExecResult {
   exitCode: number;
@@ -54,11 +54,12 @@ export class Sandbox {
         },
       );
       return { exitCode: 0, stdout: stdout.slice(-5000), stderr: "" };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const e = err as { status?: number; stdout?: string; stderr?: string };
       return {
-        exitCode: err.status ?? 1,
-        stdout: (err.stdout ?? "").slice(-5000),
-        stderr: (err.stderr ?? "").slice(-5000),
+        exitCode: e.status ?? 1,
+        stdout: (e.stdout ?? "").slice(-5000),
+        stderr: (e.stderr ?? "").slice(-5000),
       };
     }
   }

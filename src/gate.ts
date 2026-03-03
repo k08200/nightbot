@@ -1,6 +1,6 @@
-import { execSync } from "child_process";
-import { existsSync, readFileSync } from "fs";
-import { resolve } from "path";
+import { execSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 export type GateVerdict = "pass" | "fail" | "warning";
 
@@ -29,7 +29,7 @@ function shell(cmd: string, cwd: string, timeout = 120): { ok: boolean; output: 
     return { ok: true, output: output.slice(-5000) };
   } catch (err: unknown) {
     const e = err as { stdout?: string; stderr?: string };
-    return { ok: false, output: ((e.stdout ?? "") + "\n" + (e.stderr ?? "")).slice(-5000) };
+    return { ok: false, output: (`${e.stdout ?? ""}\n${e.stderr ?? ""}`).slice(-5000) };
   }
 }
 
@@ -124,7 +124,7 @@ function checkLint(repoPath: string, diff: string): GateResult[] {
     });
   }
 
-  // Diff-specific: @ts-ignore / @ts-expect-error
+  // Diff-specific: @ts-expect-error / @ts-expect-error
   const tsIgnore = added.filter(l => /@ts-ignore|@ts-expect-error/.test(l));
   if (tsIgnore.length > 0) {
     results.push({
@@ -328,6 +328,6 @@ export function formatGateReport(report: GateReport): string {
 export function gateFailureSummary(report: GateReport): string {
   return report.results
     .filter(r => r.verdict === "fail")
-    .map(r => `[${r.gate}] ${r.message}${r.details ? ": " + r.details.slice(0, 200) : ""}`)
+    .map(r => `[${r.gate}] ${r.message}${r.details ? `: ${r.details.slice(0, 200)}` : ""}`)
     .join("\n");
 }

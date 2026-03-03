@@ -1,8 +1,8 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
-import { resolve } from "path";
-import { Config } from "./config.js";
-import { LLM } from "./llm.js";
-import { Task } from "./task.js";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { Config } from "./config.js";
+import type { LLM } from "./llm.js";
+import type { Task } from "./task.js";
 
 export interface Plan {
   tasks: Array<{
@@ -77,7 +77,7 @@ function parseJSON(text: string): Plan {
   }
 }
 
-function readJSON(path: string): any {
+function readJSON(path: string): unknown {
   if (!existsSync(path)) return null;
   return JSON.parse(readFileSync(path, "utf-8"));
 }

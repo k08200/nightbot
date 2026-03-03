@@ -1,14 +1,14 @@
+import { execSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Command } from "commander";
 import { loadConfig } from "./config.js";
 import { LLM } from "./llm.js";
-import { createTask, saveTask, loadTasks, TaskType } from "./task.js";
 import { startOrchestrator } from "./orchestrator.js";
 import { generateBriefing } from "./planner.js";
 import { buildSandboxImage } from "./sandbox.js";
 import { runScout, saveReport } from "./scout.js";
-import { existsSync, readFileSync, readdirSync, copyFileSync, mkdirSync } from "fs";
-import { resolve } from "path";
-import { execSync } from "child_process";
+import { createTask, loadTasks, saveTask, type TaskType } from "./task.js";
 
 const program = new Command();
 
@@ -80,7 +80,7 @@ program
       const tasks = loadTasks(config.paths.queue, status);
       if (tasks.length > 0) {
         console.log(`\n${status.toUpperCase()} (${tasks.length})`);
-        tasks.forEach(t => console.log(`  [${t.id}] ${t.question}`));
+        for (const t of tasks) console.log(`  [${t.id}] ${t.question}`);
       }
     }
   });
@@ -94,10 +94,10 @@ program
       console.log("No reports yet."); return;
     }
     const files = readdirSync(config.paths.reports).filter(f => f.endsWith(".md")).sort().reverse();
-    files.slice(0, 10).forEach(f => {
+    for (const f of files.slice(0, 10)) {
       const first = readFileSync(resolve(config.paths.reports, f), "utf-8").split("\n")[0];
       console.log(`  ${f}: ${first}`);
-    });
+    }
   });
 
 program
@@ -123,14 +123,20 @@ program
     if (!existsSync(planPath)) {
       console.log("No plan yet. Run: nightbot start"); return;
     }
-    const plan = JSON.parse(readFileSync(planPath, "utf-8"));
+    const plan = JSON.parse(readFileSync(planPath, "utf-8")) as {
+      tasks?: Array<{ id: string; name: string; status: string }>;
+      executionOrder?: string[];
+      reasoning?: string;
+    };
     console.log(`Plan (${plan.tasks?.length ?? 0} tasks)`);
     console.log(`Reasoning: ${plan.reasoning ?? "n/a"}\n`);
     const icons: Record<string, string> = { ready: "⏳", done: "✅", failed: "❌", running: "🔄" };
-    (plan.executionOrder ?? []).forEach((id: string, i: number) => {
-      const t = plan.tasks?.find((x: any) => x.id === id);
+    const order = plan.executionOrder ?? [];
+    for (let i = 0; i < order.length; i++) {
+      const id = order[i];
+      const t = plan.tasks?.find(x => x.id === id);
       if (t) console.log(`  ${i + 1}. ${icons[t.status] ?? "?"} [${t.id}] ${t.name}`);
-    });
+    }
   });
 
 program
@@ -144,7 +150,7 @@ program
     if (await llm.isAvailable()) {
       const models = await llm.listModels();
       console.log(`✅ ollama: ${models.length} models`);
-      models.forEach(m => console.log(`   - ${m}`));
+      for (const m of models) console.log(`   - ${m}`);
     } else {
       console.log("❌ ollama: not reachable (run: ollama serve)");
     }

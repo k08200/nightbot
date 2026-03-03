@@ -24,7 +24,7 @@ export class LLM {
       throw new Error(`ollama error ${resp.status}: ${await resp.text()}`);
     }
 
-    const data = await resp.json() as any;
+    const data = (await resp.json()) as { message: { content: string } };
     return data.message.content;
   }
 
@@ -41,7 +41,7 @@ export class LLM {
 
   async listModels(): Promise<string[]> {
     const resp = await fetch(`${this.host}/api/tags`);
-    const data = await resp.json() as any;
-    return (data.models ?? []).map((m: any) => m.name);
+    const data = (await resp.json()) as { models?: Array<{ name: string }> };
+    return (data.models ?? []).map(m => m.name);
   }
 }

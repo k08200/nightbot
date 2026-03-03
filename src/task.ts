@@ -1,6 +1,6 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync } from "fs";
-import { resolve } from "path";
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import yaml from "js-yaml";
 
 export type TaskType = "feasibility" | "migration" | "comparison" | "reproduction" | "exploration" | "implement";
@@ -61,8 +61,8 @@ export function loadTasks(queueDir: string, status?: TaskStatus): Task[] {
     const dir = resolve(queueDir, s);
     if (!existsSync(dir)) continue;
     for (const file of readdirSync(dir).filter(f => f.endsWith(".yaml"))) {
-      const raw = yaml.load(readFileSync(resolve(dir, file), "utf-8")) as any;
-      if (raw) tasks.push(raw as Task);
+      const raw = yaml.load(readFileSync(resolve(dir, file), "utf-8")) as Task | undefined;
+      if (raw) tasks.push(raw);
     }
   }
   return tasks;
