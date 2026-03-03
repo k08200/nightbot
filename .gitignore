@@ -20,3 +20,7 @@ config/nightbot.yaml
 
 # Keep queue/pending for committed tasks
 !queue/pending/.gitkeep
+
+# Node
+node_modules/
+
