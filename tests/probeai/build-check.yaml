@@ -4,7 +4,7 @@ description: "Verify nightbot compiles without errors"
 
 agent:
   type: command
-  command: "cd /Users/yongrean/Downloads/nightbot && npx tsc --noEmit 2>&1"
+  command: "npx tsc --noEmit 2>&1"
 
 steps:
   - action: check_output
