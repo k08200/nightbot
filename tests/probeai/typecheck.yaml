@@ -1,0 +1,20 @@
+id: nightbot-typecheck
+name: "Nightbot Type Check"
+description: "Verify TypeScript types are correct"
+
+agent:
+  type: command
+  command: "npx tsc --noEmit 2>&1"
+
+steps:
+  - action: check_output
+    expect: ""
+
+evaluate:
+  method: rules
+  passThreshold: 100
+  rules:
+    - type: exit_code
+      target: exit
+      value: "0"
+      weight: 1
