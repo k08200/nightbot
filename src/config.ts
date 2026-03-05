@@ -38,6 +38,10 @@ export interface Config {
     enabled: boolean;
     maxAttempts: number;
   };
+  probeai: {
+    enabled: boolean;
+    scenarioDir: string;
+  };
   scheduler: {
     checkIntervalSeconds: number;
   };
@@ -86,6 +90,10 @@ const defaults: Config = {
     enabled: true,
     maxAttempts: 2,
   },
+  probeai: {
+    enabled: false,
+    scenarioDir: "./tests/probeai",
+  },
   scheduler: {
     checkIntervalSeconds: 300,
   },
@@ -111,6 +119,7 @@ export function loadConfig(path?: string): Config {
     circuitBreakers: { ...defaults.circuitBreakers, ...raw.circuit_breakers },
     contextCompression: { ...defaults.contextCompression, ...raw.context_compression },
     gateRetry: { ...defaults.gateRetry, ...raw.gate_retry },
+    probeai: { ...defaults.probeai, ...raw.probeai },
     scheduler: { ...defaults.scheduler, ...raw.scheduler },
     paths: { ...defaults.paths, ...raw.paths },
   };

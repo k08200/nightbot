@@ -1,0 +1,20 @@
+id: nightbot-build
+name: "Nightbot Build Check"
+description: "Verify nightbot compiles without errors"
+
+agent:
+  type: command
+  command: "cd /Users/yongrean/Downloads/nightbot && npx tsc --noEmit 2>&1"
+
+steps:
+  - action: check_output
+    expect: ""
+
+evaluate:
+  method: rules
+  passThreshold: 100
+  rules:
+    - type: exit_code
+      target: exit
+      value: "0"
+      weight: 1

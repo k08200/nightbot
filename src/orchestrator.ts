@@ -7,6 +7,7 @@ import { formatGateReport, gateFailureSummary, runGates } from "./gate.js";
 import { LLM } from "./llm.js";
 import { createPlan, getNextTask, type Plan, replan, savePlan } from "./planner.js";
 import { runScout, type ScoutResult, saveReport } from "./scout.js";
+import { formatProbeFailures, runProbeVerification } from "./probeai.js";
 import { createTask, loadTasks, moveTask, type Task } from "./task.js";
 
 function sleep(ms: number): Promise<void> {
@@ -238,6 +239,48 @@ async function handleImplementResult(
 
     if (gateReport.passed) {
       console.log(`${label} PASSED (${gateReport.warnCount} warnings)`);
+
+      // ProbeAI verification (if enabled)
+      if (config.probeai.enabled) {
+        console.log(`${label} Running ProbeAI verification...`);
+        const probeReport = await runProbeVerification(repoPath, config.probeai.scenarioDir);
+
+        if (!probeReport.passed) {
+          console.log(`${label} ProbeAI FAILED: ${probeReport.summary}`);
+
+          if (attempt < maxAttempts && llm && config.gateRetry.enabled) {
+            const probeSummary = formatProbeFailures(probeReport.results);
+            console.log(`${label} Re-running scout with ProbeAI feedback...`);
+
+            const fixTask: Task = {
+              ...task,
+              question: `Fix ProbeAI test failures for: ${task.question}\n\nTest failures:\n${probeSummary}\n\nFix these issues in the existing code. Do NOT introduce new features.`,
+            };
+
+            const fixResult = await runScout(fixTask, config, llm);
+            saveReport(fixResult, config.paths.reports);
+
+            if (fixResult.diff?.trim() && fixResult.changedFiles?.length) {
+              currentResult = fixResult;
+              continue;
+            }
+
+            console.log(`${label} Scout produced no changes on ProbeAI retry`);
+          }
+
+          await escalate(
+            `Task "${task.question}" failed ProbeAI verification (after ${attempt + 1} attempt(s)):\n${probeReport.summary}`,
+            Level.NOTIFY,
+            config,
+            formatProbeFailures(probeReport.results).slice(0, 1000),
+          );
+          moveTask(task, config.paths.queue, "failed");
+          return false;
+        }
+
+        console.log(`${label} ProbeAI PASSED: ${probeReport.summary}`);
+      }
+
       applyChanges(repoPath, task, currentResult);
       moveTask(task, config.paths.queue, "done");
       return true;
