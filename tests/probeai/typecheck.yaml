@@ -1,6 +1,6 @@
-id: nightbot-build
-name: "Nightbot Build Check"
-description: "Verify nightbot compiles without errors"
+id: nightbot-typecheck
+name: "Nightbot Type Check"
+description: "Verify TypeScript types are correct"
 
 agent:
   type: command
