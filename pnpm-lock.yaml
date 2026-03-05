@@ -18,8 +18,8 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1
       probeai:
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.2.2
+        version: 0.2.2
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.4.5
@@ -286,8 +286,8 @@ packages:
     resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
     hasBin: true
 
-  probeai@0.1.4:
-    resolution: {integrity: sha512-IakHF1TH/mKnoTekcs2sOBj8HyRXlNOB3iG6yzL61+cV/QP49UEhgdgpJSnxgDlKL3lQ6ioiLy6VTlm5iF//Ww==}
+  probeai@0.2.2:
+    resolution: {integrity: sha512-6MyiW1E+24JPy08CTGl/w4o2kZSbZneUAJU/rz9cnWOx8fyfqz+TntcM3obmNCIfyjOVoNnyakGlf6buDYgoDA==}
     hasBin: true
 
   resolve-pkg-maps@1.0.0:
@@ -473,7 +473,7 @@ snapshots:
     dependencies:
       argparse: 2.0.1
 
-  probeai@0.1.4:
+  probeai@0.2.2:
     dependencies:
       chalk: 5.6.2
       commander: 14.0.3
