@@ -2,9 +2,7 @@ name: ProbeAI
 
 on:
   pull_request:
-    branches: [main, feat/typescript-rewrite-with-implement-mode]
   push:
-    branches: [main, feat/typescript-rewrite-with-implement-mode]
 
 jobs:
   verify:
