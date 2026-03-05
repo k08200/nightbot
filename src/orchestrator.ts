@@ -6,8 +6,8 @@ import { checkDecisionResponses, classifyEscalation, escalate, Level, startEscal
 import { formatGateReport, gateFailureSummary, runGates } from "./gate.js";
 import { LLM } from "./llm.js";
 import { createPlan, getNextTask, type Plan, replan, savePlan } from "./planner.js";
-import { runScout, type ScoutResult, saveReport } from "./scout.js";
 import { formatProbeFailures, runProbeVerification } from "./probeai.js";
+import { runScout, type ScoutResult, saveReport } from "./scout.js";
 import { createTask, loadTasks, moveTask, type Task } from "./task.js";
 
 function sleep(ms: number): Promise<void> {

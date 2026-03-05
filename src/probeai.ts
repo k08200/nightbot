@@ -1,6 +1,6 @@
 import { globSync } from "node:fs";
 import { resolve } from "node:path";
-import { probe, loadScenarios, type ProbeResult } from "probeai";
+import { loadScenarios, type ProbeResult, probe } from "probeai";
 
 export interface ProbeVerification {
 	passed: boolean;
