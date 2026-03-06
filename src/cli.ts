@@ -51,11 +51,11 @@ program
   .description("Show current status")
   .action(async () => {
     const config = loadConfig();
-    const llm = new LLM(config.ollama.host);
+    const llm = new LLM(config.llm.apiKey, config.llm.baseUrl);
     const available = await llm.isAvailable();
 
     console.log("Night Bot Status");
-    console.log(`  ollama: ${available ? "✅ connected" : "❌ not reachable"}`);
+    console.log(`  Claude API: ${available ? "✅ connected" : "❌ not reachable"}`);
 
     for (const status of ["pending", "running", "done", "failed", "escalated"] as const) {
       const tasks = loadTasks(config.paths.queue, status);
@@ -106,9 +106,9 @@ program
   .description("Generate morning briefing")
   .action(async () => {
     const config = loadConfig();
-    const llm = new LLM(config.ollama.host);
+    const llm = new LLM(config.llm.apiKey, config.llm.baseUrl);
     if (!(await llm.isAvailable())) {
-      console.error("❌ ollama not reachable"); return;
+      console.error("❌ Claude API not reachable. Check ANTHROPIC_API_KEY."); return;
     }
     console.log("Generating briefing...\n");
     const briefing = await generateBriefing(config, llm);
@@ -147,13 +147,13 @@ program
     console.log("Night Bot Setup\n");
 
     const config = loadConfig();
-    const llm = new LLM(config.ollama.host);
+    const llm = new LLM(config.llm.apiKey, config.llm.baseUrl);
     if (await llm.isAvailable()) {
       const models = await llm.listModels();
-      console.log(`✅ ollama: ${models.length} models`);
+      console.log(`✅ Claude API: ${models.length} models available`);
       for (const m of models) console.log(`   - ${m}`);
     } else {
-      console.log("❌ ollama: not reachable (run: ollama serve)");
+      console.log("❌ Claude API: not reachable (check ANTHROPIC_API_KEY)");
     }
 
     try {
@@ -196,10 +196,10 @@ program
   .option('-r, --repo <path>', 'Target repo path (implement mode)')
   .action(async (question, opts) => {
     const config = loadConfig();
-    const llm = new LLM(config.ollama.host);
+    const llm = new LLM(config.llm.apiKey, config.llm.baseUrl);
 
     if (!(await llm.isAvailable())) {
-      console.error('❌ ollama not reachable. Run: ollama serve');
+      console.error('❌ Claude API not reachable. Check ANTHROPIC_API_KEY.');
       return;
     }
 

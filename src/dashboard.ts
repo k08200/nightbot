@@ -55,7 +55,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <body>
 <div class="header">
   <h1>EVE Monitor</h1>
-  <span id="ollamaStatus" class="status-badge offline">Checking...</span>
+  <span id="llmStatus" class="status-badge offline">Checking...</span>
 </div>
 <div class="stats" id="stats"></div>
 <div class="grid">
@@ -101,9 +101,9 @@ async function refresh() {
       fetchJSON('/api/reports'),
       fetchJSON('/api/escalations'),
     ]);
-    const badge = document.getElementById('ollamaStatus');
-    badge.textContent = status.ollama ? 'Ollama Connected' : 'Ollama Offline';
-    badge.className = 'status-badge ' + (status.ollama ? 'online' : 'offline');
+    const badge = document.getElementById('llmStatus');
+    badge.textContent = status.llmAvailable ? 'Claude Connected' : 'Claude Offline';
+    badge.className = 'status-badge ' + (status.llmAvailable ? 'online' : 'offline');
     const counts = { pending: 0, running: 0, done: 0, failed: 0, escalated: 0 };
     for (const t of queue) counts[t.status] = (counts[t.status] || 0) + 1;
     document.getElementById('stats').innerHTML = Object.entries(counts).map(
@@ -155,7 +155,7 @@ interface EscalationItem {
 }
 
 export function startDashboard(config: Config, port = 3847): void {
-  const llm = new LLM(config.ollama.host);
+  const llm = new LLM(config.llm.apiKey, config.llm.baseUrl);
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
@@ -169,8 +169,8 @@ export function startDashboard(config: Config, port = 3847): void {
     }
 
     if (url.pathname === "/api/status") {
-      const ollama = await llm.isAvailable();
-      respond(res, { ollama });
+      const llmAvailable = await llm.isAvailable();
+      respond(res, { llmAvailable });
       return;
     }
 

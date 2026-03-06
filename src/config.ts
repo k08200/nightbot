@@ -3,7 +3,11 @@ import { resolve } from "node:path";
 import yaml from "js-yaml";
 
 export interface Config {
-  ollama: { host: string };
+  llm: {
+    apiKey: string;
+    baseUrl: string;
+    maxTokens: number;
+  };
   models: {
     planner: string;
     scout: string;
@@ -55,12 +59,16 @@ export interface Config {
 }
 
 const defaults: Config = {
-  ollama: { host: "http://localhost:11434" },
+  llm: {
+    apiKey: process.env.OPENROUTER_API_KEY ?? "",
+    baseUrl: "https://openrouter.ai/api/v1",
+    maxTokens: 8192,
+  },
   models: {
-    planner: "qwen2.5:32b",
-    scout: "qwen2.5-coder:14b",
-    secretary: "qwen2.5:32b",
-    lightweight: "llama3.1:8b",
+    planner: "anthropic/claude-sonnet-4-5",
+    scout: "anthropic/claude-sonnet-4-5",
+    secretary: "anthropic/claude-sonnet-4-5",
+    lightweight: "anthropic/claude-haiku-4-5",
   },
   sandbox: {
     image: "nightbot-sandbox:latest",
@@ -112,7 +120,7 @@ export function loadConfig(path?: string): Config {
 
   const raw = yaml.load(readFileSync(configPath, "utf-8")) as Record<string, Record<string, unknown>> | null ?? {};
   return {
-    ollama: { ...defaults.ollama, ...raw.ollama },
+    llm: { ...defaults.llm, ...raw.llm },
     models: { ...defaults.models, ...raw.models },
     sandbox: { ...defaults.sandbox, ...raw.sandbox },
     escalation: { ...defaults.escalation, ...raw.escalation },
