@@ -45,9 +45,11 @@ export class Sandbox {
     if (!this.containerId) throw new Error("Sandbox not created");
 
     try {
+      // Pipe command to bash stdin so heredocs and multi-line scripts work correctly
       const stdout = execSync(
-        `docker exec -w /sandbox ${this.containerId} bash -c ${JSON.stringify(command)}`,
+        `docker exec -i ${this.containerId} bash`,
         {
+          input: command,
           encoding: "utf-8",
           timeout: timeout * 1000,
           maxBuffer: 10 * 1024 * 1024,
