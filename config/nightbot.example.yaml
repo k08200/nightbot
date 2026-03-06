@@ -1,10 +1,12 @@
-ollama:
-  host: "http://localhost:11434"
+# LLM config — set OPENROUTER_API_KEY env var or add apiKey here
+# llm:
+#   apiKey: "sk-or-v1-..."
+#   baseUrl: "https://openrouter.ai/api/v1"
 models:
-  planner: "qwen2.5:32b"
-  scout: "qwen2.5-coder:14b"
-  secretary: "qwen2.5:32b"
-  lightweight: "llama3.1:8b"
+  planner: "anthropic/claude-sonnet-4-5"
+  scout: "anthropic/claude-sonnet-4-5"
+  secretary: "anthropic/claude-sonnet-4-5"
+  lightweight: "anthropic/claude-haiku-4-5"
 sandbox:
   image: "nightbot-sandbox:latest"
   memory: "8g"
