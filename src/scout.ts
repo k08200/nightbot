@@ -59,6 +59,7 @@ Rules:
 - Work ONLY inside /project. All file edits must be there.
 - When finished, say DONE. If you need human input, say ESCALATE.
 - Your changes will be reviewed by automated gates before merging.
+- NEVER fabricate results. Only report what actually happened.
 
 Testing:
 - After making changes, ALWAYS write tests for the code you changed.
@@ -67,15 +68,47 @@ Testing:
 - Test files must be placed alongside the source or in the project's test directory.
 - Run the tests to verify they pass before saying DONE.
 
-Multi-file editing:
-To write to a specific file, put a FILE comment before your code block:
-<!-- FILE: src/utils/helper.ts -->
+CRITICAL — Writing files:
+You MUST use <!-- FILE: path --> to create or edit files. This is the ONLY way that works.
+
+⚠️ heredoc (<<EOF, <<'EOF'), cat >, echo > ALL FAIL in this environment. NEVER use them to write files.
+
+Example — write two files in one response:
+
+<!-- FILE: src/math.ts -->
 \`\`\`typescript
-export function helper() { return 42; }
+export function add(a: number, b: number): number {
+  return a + b;
+}
 \`\`\`
 
-You can write multiple files in one response. Code blocks without FILE comments are executed as scripts.
-Use \`\`\`bash blocks to run commands (tests, builds, file reads).`;
+<!-- FILE: src/math.test.ts -->
+\`\`\`typescript
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { add } from "./math.js";
+
+describe("add", () => {
+  it("adds two numbers", () => {
+    assert.equal(add(2, 3), 5);
+  });
+});
+\`\`\`
+
+To run commands (read files, run tests), use bash blocks WITHOUT <!-- FILE: -->:
+\`\`\`bash
+cat /project/src/math.ts
+\`\`\`
+\`\`\`bash
+cd /project && node --test src/math.test.ts
+\`\`\`
+
+Workflow:
+1. Read existing code with bash blocks (cat, ls, find)
+2. Write ALL files using <!-- FILE: path --> syntax
+3. Run tests with bash blocks
+4. If tests fail, fix with more <!-- FILE: path --> blocks
+5. When everything passes, say DONE`;
 
 export async function runScout(task: Task, config: Config, llm: LLM): Promise<ScoutResult> {
   const isImplement = task.mode === "implement";
@@ -142,11 +175,6 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
       const response = await llm.chat(model, messages);
       messages.push({ role: "assistant", content: response });
 
-      if (response.toUpperCase().includes("DONE") && i > 0) {
-        console.log(`[scout:${modeLabel}] Reports DONE`);
-        break;
-      }
-
       if (response.toUpperCase().includes("ESCALATE")) {
         escalated = true;
         escalationReason = response;
@@ -155,7 +183,13 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
       }
 
       const blocks = extractCodeBlocks(response);
+      console.log(`[scout:${modeLabel}] ${blocks.length} code block(s), FILE: ${blocks.filter(b => b.targetFile).map(b => b.targetFile).join(", ") || "none"}`);
+
       if (blocks.length === 0) {
+        if (response.toUpperCase().includes("DONE") && i > 0) {
+          console.log(`[scout:${modeLabel}] Reports DONE (no code)`);
+          break;
+        }
         messages.push({ role: "user", content: "No code found. Write actual code. Use ```bash or ```typescript blocks." });
         continue;
       }
@@ -194,6 +228,12 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
 
       const feedbackMessage = formatFeedbackMessage(feedbacks);
       messages.push({ role: "user", content: feedbackMessage });
+
+      // DONE check — after code blocks are executed
+      if (response.toUpperCase().includes("DONE") && i > 0) {
+        console.log(`[scout:${modeLabel}] Reports DONE (after executing ${blocks.length} block(s))`);
+        break;
+      }
 
       // Circuit breaker: same error repeated
       const hasError = feedbacks.some(f => !f.success);
