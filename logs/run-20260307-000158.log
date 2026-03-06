@@ -1,0 +1,18 @@
+[nightbot] Starting...
+[escalation] Auto-upgrade timer started
+[nightbot] Claude API connected
+[nightbot] scout model: google/gemini-2.0-flash-001
+[nightbot] Creating plan from 2 tasks...
+/Users/yongrean/Downloads/nightbot/src/llm.ts:59
+				throw new Error(`LLM API error ${resp.status}: ${body.slice(0, 500)}`);
+				      ^
+
+Error: LLM API error 401: {"error":{"message":"Missing Authentication header","code":401}}
+    at LLM.chat (/Users/yongrean/Downloads/nightbot/src/llm.ts:59:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async createPlan (/Users/yongrean/Downloads/nightbot/src/planner.ts:31:20)
+    at async loadOrCreatePlan (/Users/yongrean/Downloads/nightbot/src/orchestrator.ts:168:16)
+    at async startOrchestrator (/Users/yongrean/Downloads/nightbot/src/orchestrator.ts:45:14)
+    at async Command.<anonymous> (/Users/yongrean/Downloads/nightbot/src/cli.ts:26:5)
+
+Node.js v24.13.0

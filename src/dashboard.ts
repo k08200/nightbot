@@ -219,19 +219,19 @@ export function startDashboard(config: Config, port = 3847): void {
       const items: EscalationItem[] = [];
       if (existsSync(config.paths.decisions)) {
         const files = readdirSync(config.paths.decisions)
-          .filter(f => f.endsWith(".json"))
+          .filter(f => f.endsWith(".md"))
           .sort()
           .reverse()
           .slice(0, 20);
         for (const f of files) {
           try {
-            const data = JSON.parse(readFileSync(resolve(config.paths.decisions, f), "utf-8")) as {
-              level?: string;
-              message?: string;
-            };
-            items.push({ name: f, level: data.level ?? "unknown", message: data.message ?? "" });
+            const content = readFileSync(resolve(config.paths.decisions, f), "utf-8");
+            const levelMatch = f.includes("-pending") ? "pending" : "resolved";
+            const questionMatch = content.match(/## Question\n([\s\S]*?)(?:\n## |$)/);
+            const message = questionMatch ? questionMatch[1].trim() : content.split("\n")[0];
+            items.push({ name: f, level: levelMatch, message });
           } catch {
-            items.push({ name: f, level: "unknown", message: "(parse error)" });
+            items.push({ name: f, level: "unknown", message: "(read error)" });
           }
         }
       }

@@ -1,0 +1,12 @@
+id: task-1a82e230
+question: >-
+  Add ISO timestamp prefix to all console.log outputs in orchestrator.ts,
+  scout.ts, and escalation.ts
+type: implement
+mode: implement
+targetRepo: /Users/yongrean/Downloads/nightbot
+dependsOn: []
+maxIterations: 20
+timeoutHours: 6
+status: escalated
+createdAt: '2026-03-06T15:01:43.006Z'

@@ -9,6 +9,7 @@ import { createPlan, getNextTask, type Plan, replan, savePlan } from "./planner.
 import { formatProbeFailures, runProbeVerification } from "./probeai.js";
 import { runScout, type ScoutResult, saveReport } from "./scout.js";
 import { createTask, loadTasks, moveTask, type Task } from "./task.js";
+import { log } from "./utils.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
@@ -27,10 +28,10 @@ export async function startOrchestrator(config?: Config): Promise<void> {
   process.on("SIGINT", () => { running = false; });
   process.on("SIGTERM", () => { running = false; });
 
-  console.log("[nightbot] Starting...");
+  log("[nightbot] Starting...");
 
   if (!(await llm.isAvailable())) {
-    console.error("[nightbot] Claude API not reachable. Check ANTHROPIC_API_KEY.");
+    log("[nightbot] Claude API not reachable. Check ANTHROPIC_API_KEY.");
     return;
   }
 
@@ -39,8 +40,8 @@ export async function startOrchestrator(config?: Config): Promise<void> {
   // Crash recovery: move any stuck "running" tasks back to "pending"
   recoverRunningTasks(config);
 
-  console.log("[nightbot] Claude API connected");
-  console.log(`[nightbot] scout model: ${config.models.scout}`);
+  log("[nightbot] Claude API connected");
+  log(`[nightbot] scout model: ${config.models.scout}`);
 
   let plan = await loadOrCreatePlan(config, llm);
 
@@ -49,7 +50,7 @@ export async function startOrchestrator(config?: Config): Promise<void> {
       // Check if human responded to any escalations
       const resolved = checkDecisionResponses(config);
       if (resolved.length > 0) {
-        console.log(`[nightbot] ${resolved.length} escalation(s) resolved`);
+        log(`[nightbot] ${resolved.length} escalation(s) resolved`);
       }
 
       const nextId = getNextTask(plan, completedIds);
@@ -57,12 +58,12 @@ export async function startOrchestrator(config?: Config): Promise<void> {
       if (!nextId) {
         const pending = loadTasks(config.paths.queue, "pending");
         if (pending.length > 0) {
-          console.log(`[nightbot] ${pending.length} new tasks, replanning...`);
+          log(`[nightbot] ${pending.length} new tasks, replanning...`);
           plan = await createPlan(pending, config, llm);
           savePlan(plan, config.paths.plans);
           continue;
         }
-        console.log("[nightbot] No tasks. Waiting...");
+        log("[nightbot] No tasks. Waiting...");
         await sleep(config.scheduler.checkIntervalSeconds * 1000);
         continue;
       }
@@ -70,7 +71,7 @@ export async function startOrchestrator(config?: Config): Promise<void> {
       // Skip tasks that have failed too many times
       const failures = failureCount.get(nextId) ?? 0;
       if (failures >= MAX_CONSECUTIVE_FAILURES) {
-        console.log(`[nightbot] Skipping ${nextId}: failed ${failures} times consecutively`);
+        log(`[nightbot] Skipping ${nextId}: failed ${failures} times consecutively`);
         completedIds.add(nextId);
         continue;
       }
@@ -81,7 +82,7 @@ export async function startOrchestrator(config?: Config): Promise<void> {
         continue;
       }
 
-      console.log(`[nightbot] Assigning: ${task.id} — ${task.question}`);
+      log(`[nightbot] Assigning: ${task.id} — ${task.question}`);
       moveTask(task, config.paths.queue, "running");
 
       const result = await runScout(task, config, llm);
@@ -106,7 +107,7 @@ export async function startOrchestrator(config?: Config): Promise<void> {
           failureCount.set(nextId, failures + 1);
           const newCount = failures + 1;
           if (newCount >= MAX_CONSECUTIVE_FAILURES) {
-            console.log(`[nightbot] Task ${task.id} failed ${newCount} times, giving up`);
+            log(`[nightbot] Task ${task.id} failed ${newCount} times, giving up`);
             await escalate(
               `Task "${task.question}" failed ${newCount} consecutive times and has been abandoned`,
               Level.NOTIFY,
@@ -122,17 +123,21 @@ export async function startOrchestrator(config?: Config): Promise<void> {
       }
 
       consecutiveErrors = 0;
-      console.log(`[nightbot] Done: ${task.id} (${result.iterations} iters, ${(result.durationMs / 1000).toFixed(0)}s)`);
+      log(`[nightbot] Done: ${task.id} (${result.iterations} iters, ${(result.durationMs / 1000).toFixed(0)}s)`);
 
-      plan = await replan(plan, result.report, config, llm);
-      savePlan(plan, config.paths.plans);
+      try {
+        plan = await replan(plan, result.report, config, llm);
+        savePlan(plan, config.paths.plans);
+      } catch (replanErr) {
+        log(`[nightbot] Replan failed (non-fatal): ${String(replanErr).slice(0, 200)}`);
+      }
 
     } catch (err) {
       consecutiveErrors++;
-      console.error(`[nightbot] Error (${consecutiveErrors}/${MAX_CONSECUTIVE_FAILURES}):`, err);
+      log(`[nightbot] Error (${consecutiveErrors}/${MAX_CONSECUTIVE_FAILURES}): ${String(err).slice(0, 500)}`);
 
       if (consecutiveErrors >= MAX_CONSECUTIVE_FAILURES) {
-        console.error(`[nightbot] ${MAX_CONSECUTIVE_FAILURES} consecutive loop errors, shutting down`);
+        log(`[nightbot] ${MAX_CONSECUTIVE_FAILURES} consecutive loop errors, shutting down`);
         await escalate(
           `Orchestrator hit ${MAX_CONSECUTIVE_FAILURES} consecutive errors and is shutting down`,
           Level.URGENT,
@@ -147,24 +152,24 @@ export async function startOrchestrator(config?: Config): Promise<void> {
   }
 
   stopEscalationTimer();
-  console.log("[nightbot] Stopped.");
+  log("[nightbot] Stopped.");
 }
 
 async function loadOrCreatePlan(config: Config, llm: LLM): Promise<Plan> {
   const planPath = resolve(config.paths.plans, "current.json");
   if (existsSync(planPath)) {
     const plan = JSON.parse(readFileSync(planPath, "utf-8")) as Plan;
-    console.log(`[nightbot] Loaded plan: ${plan.tasks?.length ?? 0} tasks`);
+    log(`[nightbot] Loaded plan: ${plan.tasks?.length ?? 0} tasks`);
     return plan;
   }
 
   const tasks = loadTasks(config.paths.queue, "pending");
   if (tasks.length === 0) {
-    console.log("[nightbot] No tasks. Add with: nightbot add 'question'");
+    log("[nightbot] No tasks. Add with: nightbot add 'question'");
     return { tasks: [], executionOrder: [], reasoning: "empty" };
   }
 
-  console.log(`[nightbot] Creating plan from ${tasks.length} tasks...`);
+  log(`[nightbot] Creating plan from ${tasks.length} tasks...`);
   const plan = await createPlan(tasks, config, llm);
   savePlan(plan, config.paths.plans);
   return plan;
@@ -190,9 +195,9 @@ function recoverRunningTasks(config: Config): void {
   const running = loadTasks(config.paths.queue, "running");
   if (running.length === 0) return;
 
-  console.log(`[nightbot] Recovering ${running.length} stuck task(s) from previous run`);
+  log(`[nightbot] Recovering ${running.length} stuck task(s) from previous run`);
   for (const task of running) {
-    console.log(`[nightbot]   ${task.id} (running → pending)`);
+    log(`[nightbot]   ${task.id} (running → pending)`);
     moveTask(task, config.paths.queue, "pending");
   }
 }
@@ -206,14 +211,14 @@ async function handleImplementResult(
   llm?: LLM,
 ): Promise<boolean> {
   if (!result.diff?.trim() || !result.changedFiles?.length) {
-    console.log("[gate] No changes to apply");
+    log("[gate] No changes to apply");
     moveTask(task, config.paths.queue, "done");
     return true;
   }
 
   const repoPath = task.targetRepo ?? task.context;
   if (!repoPath) {
-    console.log("[gate] No target repo path, skipping gates");
+    log("[gate] No target repo path, skipping gates");
     moveTask(task, config.paths.queue, "done");
     return true;
   }
@@ -226,7 +231,7 @@ async function handleImplementResult(
     const label = isRetry ? `[gate:retry ${attempt}/${maxAttempts}]` : "[gate]";
 
     // Run gates against the diff
-    console.log(`${label} Running code gates...`);
+    log(`${label} Running code gates...`);
     const gateReport = runGates(repoPath, currentResult.diff ?? "");
     const reportText = formatGateReport(gateReport);
 
@@ -235,22 +240,22 @@ async function handleImplementResult(
     const suffix = isRetry ? `-gate-retry${attempt}` : "-gate";
     const gatePath = resolve(config.paths.reports, `${new Date().toISOString().slice(0, 10)}-${task.id}${suffix}.md`);
     writeFileSync(gatePath, reportText);
-    console.log(`${label} Report: ${gatePath}`);
+    log(`${label} Report: ${gatePath}`);
 
     if (gateReport.passed) {
-      console.log(`${label} PASSED (${gateReport.warnCount} warnings)`);
+      log(`${label} PASSED (${gateReport.warnCount} warnings)`);
 
       // ProbeAI verification (if enabled)
       if (config.probeai.enabled) {
-        console.log(`${label} Running ProbeAI verification...`);
+        log(`${label} Running ProbeAI verification...`);
         const probeReport = await runProbeVerification(repoPath, config.probeai.scenarioDir);
 
         if (!probeReport.passed) {
-          console.log(`${label} ProbeAI FAILED: ${probeReport.summary}`);
+          log(`${label} ProbeAI FAILED: ${probeReport.summary}`);
 
           if (attempt < maxAttempts && llm && config.gateRetry.enabled) {
             const probeSummary = formatProbeFailures(probeReport.results);
-            console.log(`${label} Re-running scout with ProbeAI feedback...`);
+            log(`${label} Re-running scout with ProbeAI feedback...`);
 
             const fixTask: Task = {
               ...task,
@@ -265,7 +270,7 @@ async function handleImplementResult(
               continue;
             }
 
-            console.log(`${label} Scout produced no changes on ProbeAI retry`);
+            log(`${label} Scout produced no changes on ProbeAI retry`);
           }
 
           await escalate(
@@ -278,7 +283,7 @@ async function handleImplementResult(
           return false;
         }
 
-        console.log(`${label} ProbeAI PASSED: ${probeReport.summary}`);
+        log(`${label} ProbeAI PASSED: ${probeReport.summary}`);
       }
 
       applyChanges(repoPath, task, currentResult);
@@ -286,12 +291,12 @@ async function handleImplementResult(
       return true;
     }
 
-    console.log(`${label} FAILED (${gateReport.failCount} failures)`);
+    log(`${label} FAILED (${gateReport.failCount} failures)`);
 
     // If retries are available and LLM is provided, re-run scout with gate feedback
     if (attempt < maxAttempts && llm && config.gateRetry.enabled) {
       const summary = gateFailureSummary(gateReport);
-      console.log(`${label} Re-running scout with gate feedback...`);
+      log(`${label} Re-running scout with gate feedback...`);
 
       const fixTask: Task = {
         ...task,
@@ -306,7 +311,7 @@ async function handleImplementResult(
         continue;
       }
 
-      console.log(`${label} Scout produced no changes on retry`);
+      log(`${label} Scout produced no changes on retry`);
     }
 
     // Final failure: escalate
@@ -329,44 +334,46 @@ function applyChanges(repoPath: string, task: Task, result: ScoutResult): void {
   if (!result.changedFiles?.length) return;
 
   const branch = `nightbot/${task.id}`;
+  const gitOpts = { cwd: repoPath, encoding: "utf-8" as const, stdio: "pipe" as const };
+
+  // Stash any dirty files (e.g. nightbot.log) so checkout doesn't fail
+  let stashed = false;
+  try {
+    const stashOut = execSync("git stash --include-untracked", gitOpts).trim();
+    stashed = !stashOut.includes("No local changes");
+  } catch { /* nothing to stash */ }
 
   try {
-    // Create branch
-    execSync(`git checkout -b ${branch}`, { cwd: repoPath, encoding: "utf-8", stdio: "pipe" });
+    execSync(`git checkout -b ${branch}`, gitOpts);
 
-    // Apply changed files
     for (const file of result.changedFiles) {
       const filePath = resolve(repoPath, file.path);
       mkdirSync(resolve(filePath, ".."), { recursive: true });
       writeFileSync(filePath, file.content);
     }
 
-    // Commit
-    execSync("git add -A", { cwd: repoPath, encoding: "utf-8", stdio: "pipe" });
-    execSync(
-      `git commit -m "nightbot: ${task.question.slice(0, 50)}"`,
-      { cwd: repoPath, encoding: "utf-8", stdio: "pipe" },
-    );
+    execSync("git add -A", gitOpts);
+    execSync(`git commit -m "nightbot: ${task.question.slice(0, 50)}"`, gitOpts);
 
-    console.log(`[gate] Changes committed on branch: ${branch}`);
+    log(`[gate] Changes committed on branch: ${branch}`);
 
-    // Try to create PR via gh CLI
     try {
       execSync(
         `gh pr create --title "nightbot: ${task.question.slice(0, 60)}" --body "Automated by nightbot task ${task.id}" --head ${branch}`,
-        { cwd: repoPath, encoding: "utf-8", stdio: "pipe" },
+        gitOpts,
       );
-      console.log("[gate] PR created");
+      log("[gate] PR created");
     } catch {
-      console.log("[gate] gh CLI not available or failed, PR not created. Branch ready for manual PR.");
+      log("[gate] gh CLI not available or failed, PR not created. Branch ready for manual PR.");
     }
 
-    // Switch back to previous branch
-    execSync("git checkout -", { cwd: repoPath, encoding: "utf-8", stdio: "pipe" });
+    execSync("git checkout -", gitOpts);
   } catch (err) {
-    console.error("[gate] Failed to apply changes:", err);
-    try {
-      execSync("git checkout -", { cwd: repoPath, encoding: "utf-8", stdio: "pipe" });
-    } catch { /* ignore */ }
+    log(`[gate] Failed to apply changes: ${String(err).slice(0, 300)}`);
+    try { execSync("git checkout -", gitOpts); } catch { /* ignore */ }
+  } finally {
+    if (stashed) {
+      try { execSync("git stash pop", gitOpts); } catch { /* ignore */ }
+    }
   }
 }

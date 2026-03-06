@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { Command } from "commander";
 import { loadConfig } from "./config.js";
@@ -229,6 +229,28 @@ program
 
     console.log('');
     console.log(result.report);
+  });
+
+program
+  .command("clear")
+  .description("Clear completed/failed tasks from the queue")
+  .option("-a, --all", "Also clear escalated tasks")
+  .action((opts) => {
+    const config = loadConfig();
+    const statuses: Array<"done" | "failed" | "escalated"> = ["done", "failed"];
+    if (opts.all) statuses.push("escalated");
+
+    let total = 0;
+    for (const status of statuses) {
+      const dir = resolve(config.paths.queue, status);
+      if (!existsSync(dir)) continue;
+      const files = readdirSync(dir).filter(f => f.endsWith(".yaml"));
+      for (const f of files) {
+        unlinkSync(resolve(dir, f));
+        total++;
+      }
+    }
+    console.log(`Cleared ${total} task(s) from: ${statuses.join(", ")}`);
   });
 
 program

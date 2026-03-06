@@ -24,27 +24,47 @@ export class LLM {
 		temperature = 0.7,
 		maxTokens = 8192,
 	): Promise<string> {
-		const resp = await fetch(`${this.baseUrl}/chat/completions`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${this.apiKey}`,
-			},
-			body: JSON.stringify({
-				model,
-				messages,
-				temperature,
-				max_tokens: maxTokens,
-			}),
-		});
+		const maxRetries = 5;
+		for (let attempt = 0; attempt < maxRetries; attempt++) {
+			const resp = await fetch(`${this.baseUrl}/chat/completions`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${this.apiKey}`,
+				},
+				body: JSON.stringify({
+					model,
+					messages,
+					temperature,
+					max_tokens: maxTokens,
+				}),
+				signal: AbortSignal.timeout(180_000),
+			});
 
-		if (!resp.ok) {
-			const body = await resp.text();
-			throw new Error(`LLM API error ${resp.status}: ${body}`);
+			if (resp.status === 429 && attempt < maxRetries - 1) {
+				const wait = Math.min(15 * 2 ** attempt, 120);
+				console.log(`[llm] Rate limited (429), waiting ${wait}s before retry ${attempt + 1}/${maxRetries}...`);
+				await new Promise((r) => setTimeout(r, wait * 1000));
+				continue;
+			}
+
+			if (resp.status >= 500 && attempt < maxRetries - 1) {
+				const wait = 5 * (attempt + 1);
+				console.log(`[llm] Server error (${resp.status}), waiting ${wait}s before retry...`);
+				await new Promise((r) => setTimeout(r, wait * 1000));
+				continue;
+			}
+
+			if (!resp.ok) {
+				const body = await resp.text();
+				throw new Error(`LLM API error ${resp.status}: ${body.slice(0, 500)}`);
+			}
+
+			const data = (await resp.json()) as ChatResponse;
+			return data.choices[0]?.message?.content ?? "";
 		}
 
-		const data = (await resp.json()) as ChatResponse;
-		return data.choices[0]?.message?.content ?? "";
+		throw new Error(`LLM API: max retries (${maxRetries}) exceeded for model ${model}`);
 	}
 
 	async isAvailable(): Promise<boolean> {

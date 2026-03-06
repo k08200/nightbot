@@ -7,12 +7,15 @@ build/
 venv/
 
 # Runtime data (don't commit these)
+nightbot.log
 plans/current.json
 plans/history/
 reports/
 decisions/
 queue/running/
 queue/done/
+queue/failed/
+queue/escalated/
 sandbox/
 
 # Config with secrets
