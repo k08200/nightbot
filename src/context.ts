@@ -1,4 +1,5 @@
 import type { LLM, Message } from "./llm.js";
+import { log } from "./utils.js";
 
 export interface CompressionConfig {
   enabled: boolean;
@@ -52,7 +53,7 @@ export async function compressContext(
 
   if (middle.length < 2) return messages;
 
-  console.log(
+  log(
     `[context] Compressing ${middle.length} messages (~${estimateTokens(middle)} tokens) → summary`,
   );
 
@@ -101,6 +102,6 @@ Be concise. Use bullet points. Keep only actionable information.`,
   ];
 
   const summary = await llm.chat(model, summaryPrompt, 0.3);
-  console.log(`[context] Summary generated (${summary.length} chars)`);
+  log(`[context] Summary generated (${summary.length} chars)`);
   return summary;
 }

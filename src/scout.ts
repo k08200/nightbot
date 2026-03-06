@@ -7,6 +7,7 @@ import { analyzeResult, formatFeedbackMessage, type StructuredFeedback } from ".
 import type { LLM, Message } from "./llm.js";
 import { Sandbox } from "./sandbox.js";
 import type { Task } from "./task.js";
+import { log } from "./utils.js";
 
 export interface ScoutResult {
   task: Task;
@@ -117,7 +118,7 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
   const start = Date.now();
   const modeLabel = isImplement ? "implement" : "research";
 
-  console.log(`[scout:${modeLabel}] Starting: ${task.id} — ${task.question}`);
+  log(`[scout:${modeLabel}] Starting: ${task.id} — ${task.question}`);
 
   const systemPrompt = isImplement
     ? loadAgentPrompt("implementer", IMPLEMENTER_FALLBACK)
@@ -169,12 +170,12 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
       const elapsed = Date.now() - start;
 
       if (elapsed > cb.timeoutPerTaskHours * 3600 * 1000) {
-        console.log(`[scout:${modeLabel}] Timeout after ${(elapsed / 1000).toFixed(0)}s`);
+        log(`[scout:${modeLabel}] Timeout after ${(elapsed / 1000).toFixed(0)}s`);
         messages.push({ role: "user", content: "TIME'S UP. Summarize what you've done so far." });
         break;
       }
 
-      console.log(`[scout:${modeLabel}] Iteration ${iterations}/${cb.iterationLimit}`);
+      log(`[scout:${modeLabel}] Iteration ${iterations}/${cb.iterationLimit}`);
 
       // Compress context if history is getting too long
       if (iterations > compression.compressAfterIteration) {
@@ -187,21 +188,21 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
       if (response.toUpperCase().includes("ESCALATE") && codeExecuted) {
         escalated = true;
         escalationReason = response;
-        console.log(`[scout:${modeLabel}] Requests escalation`);
+        log(`[scout:${modeLabel}] Requests escalation`);
         break;
       }
       if (response.toUpperCase().includes("ESCALATE") && !codeExecuted) {
-        console.log(`[scout:${modeLabel}] Ignoring premature ESCALATE (no code executed yet)`);
+        log(`[scout:${modeLabel}] Ignoring premature ESCALATE (no code executed yet)`);
         messages.push({ role: "user", content: "You must read the project code first before escalating. Start by listing files and reading the relevant source code. Use bash blocks: ```bash\nls /project/src/\n```" });
         continue;
       }
 
       const blocks = extractCodeBlocks(response);
-      console.log(`[scout:${modeLabel}] ${blocks.length} code block(s), FILE: ${blocks.filter(b => b.targetFile).map(b => b.targetFile).join(", ") || "none"}`);
+      log(`[scout:${modeLabel}] ${blocks.length} code block(s), FILE: ${blocks.filter(b => b.targetFile).map(b => b.targetFile).join(", ") || "none"}`);
 
       if (blocks.length === 0) {
         if (response.toUpperCase().includes("DONE") && codeExecuted) {
-          console.log(`[scout:${modeLabel}] Reports DONE (no code)`);
+          log(`[scout:${modeLabel}] Reports DONE (no code)`);
           break;
         }
         messages.push({ role: "user", content: "No code found. Write actual code. Use ```bash or ```typescript blocks." });
@@ -246,7 +247,7 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
 
       // DONE check — after code blocks are executed
       if (response.toUpperCase().includes("DONE") && codeExecuted) {
-        console.log(`[scout:${modeLabel}] Reports DONE (after executing ${blocks.length} block(s))`);
+        log(`[scout:${modeLabel}] Reports DONE (after executing ${blocks.length} block(s))`);
         break;
       }
 
@@ -257,7 +258,7 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
         if (recentErrors.length >= cb.sameErrorLimit) {
           const recent = recentErrors.slice(-cb.sameErrorLimit);
           if (new Set(recent).size === 1) {
-            console.log(`[scout:${modeLabel}] Same error ${cb.sameErrorLimit} times, giving up`);
+            log(`[scout:${modeLabel}] Same error ${cb.sameErrorLimit} times, giving up`);
             messages.push({ role: "user", content: `Same error ${cb.sameErrorLimit} times. Stop and report what you learned.` });
             const final = await llm.chat(model, messages);
             messages.push({ role: "assistant", content: final });
@@ -279,7 +280,7 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
           "cd /project && git diff --name-only HEAD | grep -E '\\.(ts|js|tsx|jsx)$' | head -10",
         );
         if (changedSrc.stdout.trim()) {
-          console.log("[scout:implement] No tests found in changes, requesting test generation");
+          log("[scout:implement] No tests found in changes, requesting test generation");
           messages.push({
             role: "user",
             content: `You changed these files but wrote no tests:\n${changedSrc.stdout}\n\nWrite tests for your changes now. Match the project's existing test patterns. Use <!-- FILE: path --> syntax to create test files. Then run them.`,
@@ -310,13 +311,13 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
             messages.push({ role: "user", content: fbMsg });
 
             if (testFeedbacks.every(f => f.success)) {
-              console.log("[scout:implement] Tests generated and passing");
+              log("[scout:implement] Tests generated and passing");
               break;
             }
           }
         }
       } else {
-        console.log("[scout:implement] Tests found in changes");
+        log("[scout:implement] Tests found in changes");
       }
     }
 
@@ -328,9 +329,9 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
       diff = sandbox.extractDiff();
       if (diff.trim()) {
         changedFiles = sandbox.extractChangedFiles();
-        console.log(`[scout:implement] ${changedFiles.length} file(s) changed`);
+        log(`[scout:implement] ${changedFiles.length} file(s) changed`);
       } else {
-        console.log("[scout:implement] No changes detected");
+        log("[scout:implement] No changes detected");
       }
     }
 
@@ -355,6 +356,6 @@ export function saveReport(result: ScoutResult, reportsDir: string): string {
   const date = new Date().toISOString().slice(0, 10);
   const path = resolve(reportsDir, `${date}-${result.task.id}.md`);
   writeFileSync(path, result.report);
-  console.log(`[scout] Report saved: ${path}`);
+  log(`[scout] Report saved: ${path}`);
   return path;
 }

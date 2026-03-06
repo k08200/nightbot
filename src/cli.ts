@@ -232,6 +232,28 @@ program
   });
 
 program
+  .command("clear")
+  .description("Clear completed/failed tasks from the queue")
+  .option("-a, --all", "Also clear escalated tasks")
+  .action((opts) => {
+    const config = loadConfig();
+    const statuses: Array<"done" | "failed" | "escalated"> = ["done", "failed"];
+    if (opts.all) statuses.push("escalated");
+
+    let total = 0;
+    for (const status of statuses) {
+      const dir = resolve(config.paths.queue, status);
+      if (!existsSync(dir)) continue;
+      const files = readdirSync(dir).filter(f => f.endsWith(".yaml"));
+      for (const f of files) {
+        unlinkSync(resolve(dir, f));
+        total++;
+      }
+    }
+    console.log(`Cleared ${total} task(s) from: ${statuses.join(", ")}`);
+  });
+
+program
   .command("dashboard")
   .description("Open the EVE monitoring dashboard in your browser")
   .option("-p, --port <port>", "Port number", "3847")

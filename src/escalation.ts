@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Config } from "./config.js";
+import { log } from "./utils.js";
 
 export enum Level {
   SILENT = 0,
@@ -31,7 +32,7 @@ const UPGRADE_THRESHOLDS: Record<number, number> = {
 export function startEscalationTimer(): void {
   if (upgradeTimer) return;
   upgradeTimer = setInterval(checkPendingEscalations, 60 * 1000); // check every minute
-  console.log("[escalation] Auto-upgrade timer started");
+  log("[escalation] Auto-upgrade timer started");
 }
 
 export function stopEscalationTimer(): void {
@@ -53,12 +54,12 @@ async function checkPendingEscalations(): Promise<void> {
 
     const newLevel = esc.level + 1;
     if (newLevel > Level.URGENT) {
-      console.log(`[escalation] ${id}: L3 no response, pausing task`);
+      log(`[escalation] ${id}: L3 no response, pausing task`);
       pending.delete(id);
       continue;
     }
 
-    console.log(`[escalation] ${id}: No response after ${(elapsed / 3600000).toFixed(1)}h, upgrading L${esc.level} → L${newLevel}`);
+    log(`[escalation] ${id}: No response after ${(elapsed / 3600000).toFixed(1)}h, upgrading L${esc.level} → L${newLevel}`);
     esc.level = newLevel;
     esc.sentAt = now;
 
@@ -69,14 +70,14 @@ async function checkPendingEscalations(): Promise<void> {
 export function resolveEscalation(id: string): void {
   if (pending.has(id)) {
     pending.delete(id);
-    console.log(`[escalation] ${id}: Resolved`);
+    log(`[escalation] ${id}: Resolved`);
   }
 }
 
 // ─── Core escalation ─────────────────────────────────────────
 
 export async function escalate(message: string, level: Level, config: Config, context = ""): Promise<boolean> {
-  console.log(`[escalation] L${level}: ${message.slice(0, 100)}`);
+  log(`[escalation] L${level}: ${message.slice(0, 100)}`);
 
   if (level === Level.SILENT) return true;
 
@@ -110,7 +111,7 @@ export function getPendingEscalations(): PendingEscalation[] {
 async function slackNotify(message: string, config: Config): Promise<boolean> {
   const webhook = config.escalation.slackWebhook;
   if (!webhook) {
-    console.log("[escalation] Slack webhook not configured, skipping");
+    log("[escalation] Slack webhook not configured, skipping");
     return false;
   }
   try {
@@ -121,7 +122,7 @@ async function slackNotify(message: string, config: Config): Promise<boolean> {
     });
     return resp.ok;
   } catch (err) {
-    console.error("[escalation] Slack failed:", err);
+    log(`[escalation] Slack failed: ${String(err).slice(0, 200)}`);
     return false;
   }
 }
