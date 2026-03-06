@@ -144,6 +144,7 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
   let iterations = 0;
   let escalated = false;
   let escalationReason = "";
+  let codeExecuted = false;
   const recentErrors: string[] = [];
 
   try {
@@ -175,18 +176,23 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
       const response = await llm.chat(model, messages);
       messages.push({ role: "assistant", content: response });
 
-      if (response.toUpperCase().includes("ESCALATE")) {
+      if (response.toUpperCase().includes("ESCALATE") && codeExecuted) {
         escalated = true;
         escalationReason = response;
         console.log(`[scout:${modeLabel}] Requests escalation`);
         break;
+      }
+      if (response.toUpperCase().includes("ESCALATE") && !codeExecuted) {
+        console.log(`[scout:${modeLabel}] Ignoring premature ESCALATE (no code executed yet)`);
+        messages.push({ role: "user", content: "You must read the project code first before escalating. Start by listing files and reading the relevant source code. Use bash blocks: ```bash\nls /project/src/\n```" });
+        continue;
       }
 
       const blocks = extractCodeBlocks(response);
       console.log(`[scout:${modeLabel}] ${blocks.length} code block(s), FILE: ${blocks.filter(b => b.targetFile).map(b => b.targetFile).join(", ") || "none"}`);
 
       if (blocks.length === 0) {
-        if (response.toUpperCase().includes("DONE") && i > 0) {
+        if (response.toUpperCase().includes("DONE") && codeExecuted) {
           console.log(`[scout:${modeLabel}] Reports DONE (no code)`);
           break;
         }
@@ -226,11 +232,12 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
         feedbacks.push(analyzeResult(lang, result));
       }
 
+      codeExecuted = true;
       const feedbackMessage = formatFeedbackMessage(feedbacks);
       messages.push({ role: "user", content: feedbackMessage });
 
       // DONE check — after code blocks are executed
-      if (response.toUpperCase().includes("DONE") && i > 0) {
+      if (response.toUpperCase().includes("DONE") && codeExecuted) {
         console.log(`[scout:${modeLabel}] Reports DONE (after executing ${blocks.length} block(s))`);
         break;
       }

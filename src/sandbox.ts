@@ -89,21 +89,24 @@ export class Sandbox {
   createWithRepo(repoPath: string): string {
     const id = this.create(repoPath);
     this.exec("cp -r /workspace /project");
+    this.exec("cd /project && (grep -q node_modules .gitignore 2>/dev/null || echo -e 'node_modules/\\ndist/\\ncoverage/' >> .gitignore)");
     this.exec("cd /project && git add -A 2>/dev/null; git stash 2>/dev/null || true");
     return id;
   }
 
   extractDiff(): string {
     if (!this.containerId) throw new Error("Sandbox not created");
-    const result = this.exec("cd /project && git diff HEAD");
+    this.exec("cd /project && git add -A 2>/dev/null");
+    const result = this.exec("cd /project && git diff --cached HEAD -- . ':!node_modules' ':!package-lock.json' ':!pnpm-lock.yaml'");
     return result.stdout;
   }
 
   extractChangedFiles(): Array<{ path: string; content: string }> {
     if (!this.containerId) throw new Error("Sandbox not created");
-    const result = this.exec("cd /project && git diff --name-only HEAD");
+    this.exec("cd /project && git add -A 2>/dev/null");
+    const result = this.exec("cd /project && git diff --cached --name-only HEAD -- . ':!node_modules' ':!package-lock.json' ':!pnpm-lock.yaml'");
     const files = result.stdout.trim().split("\n").filter(Boolean);
-    return files.map(f => {
+    return files.filter(f => !f.startsWith("node_modules/")).map(f => {
       const content = this.exec(`cat /project/${f}`);
       return { path: f, content: content.stdout };
     });

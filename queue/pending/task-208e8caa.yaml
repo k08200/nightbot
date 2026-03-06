@@ -1,0 +1,12 @@
+id: task-208e8caa
+question: >-
+  Add a nightbot clear command that removes all done and failed task files from
+  the queue directory
+type: implement
+mode: implement
+targetRepo: /Users/yongrean/Downloads/nightbot
+dependsOn: []
+maxIterations: 20
+timeoutHours: 6
+status: pending
+createdAt: '2026-03-06T09:18:13.975Z'
