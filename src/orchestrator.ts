@@ -124,8 +124,12 @@ export async function startOrchestrator(config?: Config): Promise<void> {
       consecutiveErrors = 0;
       console.log(`[nightbot] Done: ${task.id} (${result.iterations} iters, ${(result.durationMs / 1000).toFixed(0)}s)`);
 
-      plan = await replan(plan, result.report, config, llm);
-      savePlan(plan, config.paths.plans);
+      try {
+        plan = await replan(plan, result.report, config, llm);
+        savePlan(plan, config.paths.plans);
+      } catch (replanErr) {
+        console.log(`[nightbot] Replan failed (non-fatal): ${String(replanErr).slice(0, 200)}`);
+      }
 
     } catch (err) {
       consecutiveErrors++;

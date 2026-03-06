@@ -156,6 +156,14 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
 
     const workdir = isImplement ? "/project" : "/sandbox";
 
+    // Pre-populate project structure for implement mode so the LLM has context
+    if (isImplement) {
+      const tree = sandbox.exec("find /project -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -name '*.lock' | head -80");
+      const pkg = sandbox.exec("cat /project/package.json 2>/dev/null || echo '{}'");
+      const projectContext = `\n\nProject file tree:\n${tree.stdout}\n\npackage.json:\n${pkg.stdout}`;
+      messages[messages.length - 1] = { role: "user", content: messages[messages.length - 1].content + projectContext };
+    }
+
     for (let i = 0; i < cb.iterationLimit; i++) {
       iterations = i + 1;
       const elapsed = Date.now() - start;
