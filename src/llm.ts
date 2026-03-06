@@ -1,47 +1,75 @@
 export interface Message {
-  role: "system" | "user" | "assistant";
-  content: string;
+	role: "system" | "user" | "assistant";
+	content: string;
+}
+
+interface ChatResponse {
+	choices: Array<{
+		message: { role: string; content: string };
+	}>;
 }
 
 export class LLM {
-  constructor(private host: string = "http://localhost:11434") {
-    this.host = host.replace(/\/$/, "");
-  }
+	private apiKey: string;
+	private baseUrl: string;
 
-  async chat(model: string, messages: Message[], temperature = 0.7): Promise<string> {
-    const resp = await fetch(`${this.host}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        messages,
-        stream: false,
-        options: { temperature },
-      }),
-    });
+	constructor(apiKey: string, baseUrl = "https://openrouter.ai/api/v1") {
+		this.apiKey = apiKey;
+		this.baseUrl = baseUrl.replace(/\/$/, "");
+	}
 
-    if (!resp.ok) {
-      throw new Error(`ollama error ${resp.status}: ${await resp.text()}`);
-    }
+	async chat(
+		model: string,
+		messages: Message[],
+		temperature = 0.7,
+		maxTokens = 8192,
+	): Promise<string> {
+		const resp = await fetch(`${this.baseUrl}/chat/completions`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${this.apiKey}`,
+			},
+			body: JSON.stringify({
+				model,
+				messages,
+				temperature,
+				max_tokens: maxTokens,
+			}),
+		});
 
-    const data = (await resp.json()) as { message: { content: string } };
-    return data.message.content;
-  }
+		if (!resp.ok) {
+			const body = await resp.text();
+			throw new Error(`LLM API error ${resp.status}: ${body}`);
+		}
 
-  async isAvailable(): Promise<boolean> {
-    try {
-      const resp = await fetch(`${this.host}/api/tags`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      return resp.ok;
-    } catch {
-      return false;
-    }
-  }
+		const data = (await resp.json()) as ChatResponse;
+		return data.choices[0]?.message?.content ?? "";
+	}
 
-  async listModels(): Promise<string[]> {
-    const resp = await fetch(`${this.host}/api/tags`);
-    const data = (await resp.json()) as { models?: Array<{ name: string }> };
-    return (data.models ?? []).map(m => m.name);
-  }
+	async isAvailable(): Promise<boolean> {
+		try {
+			const resp = await fetch(`${this.baseUrl}/models`, {
+				headers: { Authorization: `Bearer ${this.apiKey}` },
+				signal: AbortSignal.timeout(5000),
+			});
+			return resp.ok;
+		} catch {
+			return false;
+		}
+	}
+
+	async listModels(): Promise<string[]> {
+		try {
+			const resp = await fetch(`${this.baseUrl}/models`, {
+				headers: { Authorization: `Bearer ${this.apiKey}` },
+			});
+			const data = (await resp.json()) as {
+				data?: Array<{ id: string }>;
+			};
+			return (data.data ?? []).map((m) => m.id).slice(0, 20);
+		} catch {
+			return [];
+		}
+	}
 }

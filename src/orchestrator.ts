@@ -18,7 +18,7 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 
 export async function startOrchestrator(config?: Config): Promise<void> {
   config = config ?? loadConfig();
-  const llm = new LLM(config.ollama.host);
+  const llm = new LLM(config.llm.apiKey, config.llm.baseUrl);
   const completedIds = new Set<string>();
   const failureCount = new Map<string, number>();
   let consecutiveErrors = 0;
@@ -30,7 +30,7 @@ export async function startOrchestrator(config?: Config): Promise<void> {
   console.log("[nightbot] Starting...");
 
   if (!(await llm.isAvailable())) {
-    console.error("[nightbot] ollama not reachable. Run: ollama serve");
+    console.error("[nightbot] Claude API not reachable. Check ANTHROPIC_API_KEY.");
     return;
   }
 
@@ -39,7 +39,7 @@ export async function startOrchestrator(config?: Config): Promise<void> {
   // Crash recovery: move any stuck "running" tasks back to "pending"
   recoverRunningTasks(config);
 
-  console.log(`[nightbot] ollama connected`);
+  console.log("[nightbot] Claude API connected");
   console.log(`[nightbot] scout model: ${config.models.scout}`);
 
   let plan = await loadOrCreatePlan(config, llm);
