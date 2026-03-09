@@ -126,8 +126,13 @@ export async function startOrchestrator(config?: Config): Promise<void> {
       log(`[nightbot] Done: ${task.id} (${result.iterations} iters, ${(result.durationMs / 1000).toFixed(0)}s)`);
 
       try {
-        plan = await replan(plan, result.report, config, llm);
+        log(`[nightbot] Replanning...`);
+        const replanTimeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("replan timeout (60s)")), 60_000),
+        );
+        plan = await Promise.race([replan(plan, result.report, config, llm), replanTimeout]);
         savePlan(plan, config.paths.plans);
+        log(`[nightbot] Replan done, ${plan.executionOrder.length} tasks in plan`);
       } catch (replanErr) {
         log(`[nightbot] Replan failed (non-fatal): ${String(replanErr).slice(0, 200)}`);
       }
