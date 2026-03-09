@@ -69,11 +69,20 @@ export class LLM {
 
 	async isAvailable(): Promise<boolean> {
 		try {
-			const resp = await fetch(`${this.baseUrl}/models`, {
+			const resp = await fetch(`${this.baseUrl}/auth/key`, {
 				headers: { Authorization: `Bearer ${this.apiKey}` },
 				signal: AbortSignal.timeout(5000),
 			});
-			return resp.ok;
+			if (resp.ok) return true;
+			// Fallback: some providers don't have /auth/key
+			if (resp.status === 404) {
+				const modelsResp = await fetch(`${this.baseUrl}/models`, {
+					headers: { Authorization: `Bearer ${this.apiKey}` },
+					signal: AbortSignal.timeout(5000),
+				});
+				return modelsResp.ok;
+			}
+			return false;
 		} catch {
 			return false;
 		}

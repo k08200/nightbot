@@ -185,15 +185,15 @@ export async function runScout(task: Task, config: Config, llm: LLM): Promise<Sc
       const response = await llm.chat(model, messages);
       messages.push({ role: "assistant", content: response });
 
-      if (response.toUpperCase().includes("ESCALATE") && codeExecuted) {
+      if (response.toUpperCase().includes("ESCALATE") && codeExecuted && iterations >= 5) {
         escalated = true;
         escalationReason = response;
-        log(`[scout:${modeLabel}] Requests escalation`);
+        log(`[scout:${modeLabel}] Requests escalation at iteration ${iterations}`);
         break;
       }
-      if (response.toUpperCase().includes("ESCALATE") && !codeExecuted) {
-        log(`[scout:${modeLabel}] Ignoring premature ESCALATE (no code executed yet)`);
-        messages.push({ role: "user", content: "You must read the project code first before escalating. Start by listing files and reading the relevant source code. Use bash blocks: ```bash\nls /project/src/\n```" });
+      if (response.toUpperCase().includes("ESCALATE") && (!codeExecuted || iterations < 5)) {
+        log(`[scout:${modeLabel}] Ignoring premature ESCALATE (iteration ${iterations}/5, codeExecuted=${codeExecuted})`);
+        messages.push({ role: "user", content: "You must try harder before escalating. You need at least 5 iterations with code executed. Read the project code, write code, run it, and iterate. Use bash blocks: ```bash\nls /project/src/\n```" });
         continue;
       }
 
