@@ -177,11 +177,25 @@ async function loadOrCreatePlan(config: Config, llm: LLM): Promise<Plan> {
 
 function findTask(taskId: string, plan: Plan, config: Config): Task | null {
   const all = loadTasks(config.paths.queue);
+
+  // Direct ID match (queue task IDs match plan IDs)
   const found = all.find(t => t.id === taskId);
   if (found) return found;
 
+  // Planner often generates new IDs. Try to match by name against pending queue tasks.
   const planTask = plan.tasks.find(t => t.id === taskId);
   if (planTask) {
+    const pending = all.filter(t => t.status === "pending");
+    const nameMatch = pending.find(t =>
+      t.question.toLowerCase().includes(planTask.name.toLowerCase()) ||
+      planTask.name.toLowerCase().includes(t.question.toLowerCase().slice(0, 30)),
+    );
+    if (nameMatch) return nameMatch;
+
+    // Last resort: return first pending implement task if available
+    const firstPending = pending[0];
+    if (firstPending) return firstPending;
+
     const type = (planTask.type ?? "feasibility") as Task["type"];
     return createTask(planTask.name, type);
   }

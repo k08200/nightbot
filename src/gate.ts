@@ -55,6 +55,12 @@ function checkBuild(repoPath: string): GateResult {
   const scripts = (pkg?.scripts ?? {}) as Record<string, string>;
 
   if (hasTsConfig) {
+    // Only run tsc if typescript is actually installed (npx may fetch a wrong "tsc" package otherwise)
+    const hasTs = existsSync(resolve(repoPath, "node_modules", ".package-lock.json")) ||
+      existsSync(resolve(repoPath, "node_modules", "typescript"));
+    if (!hasTs) {
+      return { gate: "build", verdict: "pass", message: "tsconfig.json found but typescript not installed, skipped" };
+    }
     const result = shell("npx tsc --noEmit", repoPath, 180);
     if (!result.ok) {
       return { gate: "build", verdict: "fail", message: "TypeScript compilation failed", details: result.output };

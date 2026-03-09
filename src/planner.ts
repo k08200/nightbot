@@ -20,13 +20,15 @@ export interface Plan {
 export async function createPlan(tasks: Task[], config: Config, llm: LLM): Promise<Plan> {
   const taskList = tasks.map(t => `- [${t.id}] (${t.type}) ${t.question} [${t.status}]`).join("\n");
 
-  const prompt = `You are a task planner. Given these tasks, create a plan.
+  const prompt = `You are a task planner. Given these tasks, create an execution plan.
+
+CRITICAL: You MUST use the EXACT task IDs provided below. Do NOT generate new IDs.
 
 Tasks:
 ${taskList || "(no tasks)"}
 
 Output JSON only:
-{"tasks": [{"id":"...","name":"...","type":"...","dependsOn":[],"estimatedHours":2,"status":"ready"}], "executionOrder": ["id1","id2"], "reasoning": "..."}`;
+{"tasks": [{"id":"<use exact ID from above>","name":"...","type":"...","dependsOn":[],"estimatedHours":2,"status":"ready"}], "executionOrder": ["id1","id2"], "reasoning": "..."}`;
 
   const response = await llm.chat(config.models.planner, [{ role: "user", content: prompt }], 0.3);
   return parseJSON(response);
