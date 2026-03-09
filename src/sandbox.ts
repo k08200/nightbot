@@ -91,11 +91,30 @@ export class Sandbox {
     this.exec("cp -r /workspace /project");
     this.exec("cd /project && (grep -q node_modules .gitignore 2>/dev/null || echo -e 'node_modules/\\ndist/\\ncoverage/' >> .gitignore)");
     this.exec("cd /project && git add -A 2>/dev/null; git stash 2>/dev/null || true");
+
+    // Backup original tsconfig and replace with tsx-friendly version
+    // The project's tsconfig (e.g. "module": "Node16") can break tsx inside the sandbox.
+    // Original is restored before extracting diff so the PR won't include tsconfig changes.
+    this.exec("cp /project/tsconfig.json /project/tsconfig.original.json 2>/dev/null || true");
+    this.exec(`cat > /project/tsconfig.json << 'TSEOF'
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  }
+}
+TSEOF`);
     return id;
   }
 
   extractDiff(): string {
     if (!this.containerId) throw new Error("Sandbox not created");
+    // Restore original tsconfig before diffing so the PR won't include sandbox tsconfig changes
+    this.exec("cp /project/tsconfig.original.json /project/tsconfig.json 2>/dev/null && rm /project/tsconfig.original.json 2>/dev/null || true");
     this.exec("cd /project && git add -A 2>/dev/null");
     const result = this.exec("cd /project && git diff --cached HEAD -- . ':!node_modules' ':!package-lock.json' ':!pnpm-lock.yaml'");
     return result.stdout;
