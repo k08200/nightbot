@@ -44,6 +44,8 @@ export async function startOrchestrator(config?: Config): Promise<void> {
   log(`[nightbot] scout model: ${config.models.scout}`);
 
   let plan = await loadOrCreatePlan(config, llm);
+  const MAX_IDLE_MINUTES = 15;
+  let idleSince: number | null = null;
 
   while (running) {
     try {
@@ -61,12 +63,25 @@ export async function startOrchestrator(config?: Config): Promise<void> {
           log(`[nightbot] ${pending.length} new tasks, replanning...`);
           plan = await createPlan(pending, config, llm);
           savePlan(plan, config.paths.plans);
+          idleSince = null;
           continue;
         }
-        log("[nightbot] No tasks. Waiting...");
+
+        // Auto-stop after MAX_IDLE_MINUTES with no tasks
+        if (!idleSince) {
+          idleSince = Date.now();
+          log("[nightbot] No tasks. Waiting...");
+        }
+        const idleMin = Math.round((Date.now() - idleSince) / 60_000);
+        if (idleMin >= MAX_IDLE_MINUTES) {
+          log(`[nightbot] Idle for ${idleMin} minutes. Auto-stopping.`);
+          break;
+        }
         await sleep(config.scheduler.checkIntervalSeconds * 1000);
         continue;
       }
+
+      idleSince = null;
 
       // Skip tasks that have failed too many times
       const failures = failureCount.get(nextId) ?? 0;
